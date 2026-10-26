@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>CrewTerm.Workspace</AssemblyName><RootNamespace>CrewTerm.Workspace</RootNamespace></PropertyGroup>
+</Project>

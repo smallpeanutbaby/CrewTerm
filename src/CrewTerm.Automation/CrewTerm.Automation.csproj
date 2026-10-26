@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>CrewTerm.Automation</AssemblyName><RootNamespace>CrewTerm.Automation</RootNamespace></PropertyGroup>
+</Project>

@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CrewTerm.Core/CrewTerm.Core.csproj" />
+    <Project Path="src/CrewTerm.Terminal/CrewTerm.Terminal.csproj" />
+    <Project Path="src/CrewTerm.Workspace/CrewTerm.Workspace.csproj" />
+    <Project Path="src/CrewTerm.Automation/CrewTerm.Automation.csproj" />
+    <Project Path="src/CrewTerm.App/CrewTerm.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CrewTerm.Core.Tests/CrewTerm.Core.Tests.csproj" />
+    <Project Path="tests/CrewTerm.Terminal.Tests/CrewTerm.Terminal.Tests.csproj" />
+    <Project Path="tests/CrewTerm.Workspace.Tests/CrewTerm.Workspace.Tests.csproj" />
+    <Project Path="tests/CrewTerm.Automation.Tests/CrewTerm.Automation.Tests.csproj" />
+    <Project Path="tests/CrewTerm.App.Tests/CrewTerm.App.Tests.csproj" />
+  </Folder>
+</Solution>

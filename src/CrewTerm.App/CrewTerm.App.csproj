@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>CrewTerm.App</AssemblyName><RootNamespace>CrewTerm.App</RootNamespace></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../CrewTerm.Core/CrewTerm.Core.csproj" />
+    <ProjectReference Include="../CrewTerm.Terminal/CrewTerm.Terminal.csproj" />
+    <ProjectReference Include="../CrewTerm.Workspace/CrewTerm.Workspace.csproj" />
+    <ProjectReference Include="../CrewTerm.Automation/CrewTerm.Automation.csproj" />
+    <PackageReference Include="Terminal.Gui" Version="2.5.0" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>CrewTerm.Terminal</AssemblyName><RootNamespace>CrewTerm.Terminal</RootNamespace></PropertyGroup>
+</Project>
