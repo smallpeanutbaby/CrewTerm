@@ -22,6 +22,11 @@ namespace CrewTerm.App.UI.Controls;
 public sealed class TerminalLayoutView : View
 {
     /// <summary>
+    /// 关闭标签与面板标题的热键解析：Terminal.Gui 默认把第一个 <c>_</c> 当作热键标记隐藏，标签名与会话名中的下划线会显示错误。
+    /// </summary>
+    private static readonly System.Text.Rune NoHotKey = new(0xFFFF);
+
+    /// <summary>
     /// 活动标签的前景色（粗体）。
     /// </summary>
     private const int ActiveTabColor = 0xffffff;
@@ -205,7 +210,7 @@ public sealed class TerminalLayoutView : View
             if (!bindings.TryGetValue(node.Id, out var binding))
             {
                 var pane = new TerminalPane { SessionId = node.SessionId };
-                var frame = new FrameView { Title = "TERMINAL  ·  F3 New" };
+                var frame = new FrameView { Title = "TERMINAL  ·  F3 New", HotKeySpecifier = NoHotKey };
                 frame.Add(pane); paneArea.Add(frame);
                 bindings[node.Id] = (frame, pane);
                 var id = node.Id;
@@ -287,7 +292,7 @@ public sealed class TerminalLayoutView : View
             tabBar.Add(button);
         }
         var plus = TabAction(" + ", () => NewTabRequested?.Invoke(), new Attribute(new Color(PlusColor), new Color(BarBackground)));
-        var count = new Label { Text = bindings.Count > 1 ? $"{bindings.Count} panes" : "", Height = 1, Data = "count" };
+        var count = new Label { Text = bindings.Count > 1 ? $"{bindings.Count} panes" : "", Height = 1, Data = "count", HotKeySpecifier = NoHotKey };
         count.SetScheme(new Scheme { Normal = new Attribute(new Color(CountColor), new Color(BarBackground)) });
         tabBar.Add(plus, count);
         ArrangeTabs();
@@ -302,7 +307,7 @@ public sealed class TerminalLayoutView : View
     /// <returns>新建的标签视图，尚未加入任何父视图。</returns>
     private static Label TabAction(string text, Action action, Attribute attribute)
     {
-        var label = new Label { Text = text, Height = 1, CanFocus = false };
+        var label = new Label { Text = text, Height = 1, CanFocus = false, HotKeySpecifier = NoHotKey };
         label.SetScheme(new Scheme { Normal = attribute });
         label.MouseEvent += (_, mouse) =>
         {

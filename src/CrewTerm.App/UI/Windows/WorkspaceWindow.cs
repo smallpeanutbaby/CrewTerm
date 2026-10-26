@@ -45,6 +45,12 @@ namespace CrewTerm.App.UI.Windows;
 public sealed partial class WorkspaceWindow : Window
 {
     /// <summary>
+    /// 关闭标签与框标题的热键解析：Terminal.Gui 默认把文本中的第一个 <c>_</c> 当作热键标记隐藏起来，
+    /// 路径、文件名、会话名与标签名中的下划线因此会显示错误。
+    /// </summary>
+    internal static readonly System.Text.Rune NoHotKey = new(0xFFFF);
+
+    /// <summary>
     /// Terminal.Gui 应用实例：运行模态对话框、注册计时器、从后台线程切回 UI 线程，并提供剪贴板与全局键盘事件。
     /// </summary>
     private readonly IApplication application;
@@ -128,17 +134,17 @@ public sealed partial class WorkspaceWindow : Window
     /// <summary>
     /// 文件列表的外框，标题显示当前目录（项目相对路径）。
     /// </summary>
-    private readonly FrameView filesFrame = new() { Title = "FILES" };
+    private readonly FrameView filesFrame = new() { Title = "FILES", HotKeySpecifier = NoHotKey };
 
     /// <summary>
     /// 代码编辑器的外框，标题显示文件名，有未保存修改时前缀 <c>*</c>。
     /// </summary>
-    private readonly FrameView editorFrame = new() { Title = "CODE  ·  F5 Save" };
+    private readonly FrameView editorFrame = new() { Title = "CODE  ·  F5 Save", HotKeySpecifier = NoHotKey };
 
     /// <summary>
     /// 倒数第二行的单行状态栏，显示操作结果、错误与 Agent 状态提醒。
     /// </summary>
-    private readonly Label status = new() { Width = Dim.Fill(), Height = 1 };
+    private readonly Label status = new() { Width = Dim.Fill(), Height = 1, HotKeySpecifier = NoHotKey };
 
     /// <summary>
     /// 窗口生命周期的取消源：释放窗口时取消，进行中的 daemon 调用、搜索、Git 与检查点操作都会收到取消信号。
@@ -271,7 +277,7 @@ public sealed partial class WorkspaceWindow : Window
         terminalLayout.MenuRequested = () => Guard(Palette);
         filesFrame.Add(fileList); editorFrame.Add(editor.View);
         status.Y = Pos.AnchorEnd(2);
-        var shortcuts = new Label { Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Height = 1,
+        var shortcuts = new Label { Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Height = 1, HotKeySpecifier = NoHotKey,
             Text = "F1 Help  F2 Space  F3 Agent  F4 Files  F6 Git  F7 Tasks  F9 Commands  F10 Detach  ·  Ctrl+b prefix" };
         Add(spaceSection, agentSection, terminalLayout, filesFrame, editorFrame, status, shortcuts);
         ArrangePanels();

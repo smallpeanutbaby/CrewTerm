@@ -109,7 +109,7 @@ public sealed class LayoutTuiTests
     }
 
     /// <summary>
-    /// 验证：先向右分割再向下嵌套分割得到 3 个面板后，键入只送达当前聚焦面板的会话（Charlie）；拖动分隔线调整比例，新建名为 Review 的标签页后再点击标签栏回到原标签。
+    /// 验证：先向右分割再向下嵌套分割得到 3 个面板后，键入只送达当前聚焦面板的会话（Charlie）；拖动分隔线调整比例，新建名为 Code_Review 的标签页（标签名中的下划线原样显示）后再点击标签栏回到原标签。
     /// 分离后保存的布局有 2 个标签，活动标签含 3 个面板、根为水平分割（比例 0.6–0.8）且第二子节点为垂直分割，所有会话仍在运行；
     /// 重新打开界面时恢复嵌套布局与屏幕内容，关闭一个面板只减少面板而不结束会话（daemon 中仍有 3 个会话）。
     /// </summary>
@@ -144,8 +144,8 @@ public sealed class LayoutTuiTests
 
             await Command(ui, "Tab: New");
             await Wait(() => ui.Screen.GetText().Contains("New tab name"), ui, "tab name prompt");
-            ui.Write("\u0001Review\r");
-            await Wait(() => ui.Screen.GetText().Contains(" Review ") && !ui.Screen.GetText().Contains(" panes"), ui, "new named tab");
+            ui.Write("\u0001Code_Review\r");
+            await Wait(() => ui.Screen.GetText().Contains(" Code_Review ") && !ui.Screen.GetText().Contains(" panes"), ui, "new named tab with an underscore");
             ui.Write("\u001b[<0;39;2M\u001b[<0;39;2m");
             await Wait(() => ui.Screen.GetText().Contains("3 panes"), ui, "previous tab layout");
             ui.Write("\u001b[21~");
@@ -156,7 +156,7 @@ public sealed class LayoutTuiTests
             Assert.Equal(SplitAxis.Horizontal, saved.ActiveTab.Root.Axis);
             Assert.Equal(SplitAxis.Vertical, saved.ActiveTab.Root.Second!.Axis);
             Assert.InRange(saved.ActiveTab.Root.Ratio, 0.6, 0.8);
-            Assert.Contains(saved.Tabs, t => t.Name == "Review");
+            Assert.Contains(saved.Tabs, t => t.Name == "Code_Review");
             Assert.All((await client.CallAsync(new("list"))).Sessions!, session => Assert.False(session.HasExited));
 
             using var reopened = Launch("layout-reopen", root, state);
