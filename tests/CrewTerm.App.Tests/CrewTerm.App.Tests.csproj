@@ -6,5 +6,8 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5"><PrivateAssets>all</PrivateAssets></PackageReference>
     <Using Include="Xunit" />
     <ProjectReference Include="../../src/CrewTerm.App/CrewTerm.App.csproj" />
+    <Using Include="CrewTerm.Automation.Tests.Fixtures" />
+    <!-- 与 Automation 测试共用同一个 PowerShell 夹具源文件，避免两份实现分叉。 -->
+    <Compile Include="../CrewTerm.Automation.Tests/Fixtures/PowerShellFixture.cs" Link="Fixtures/PowerShellFixture.cs" />
   </ItemGroup>
 </Project>

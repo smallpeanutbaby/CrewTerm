@@ -5,5 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
+    <!-- 生成 XML 文档：缺少注释（CS1591）与注释格式错误（CS1570–CS1574）在“警告即错误”下直接使构建失败。 -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- 在构建中执行 .editorconfig 的代码风格规则（例如 IDE0005 未使用的 using）。 -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 </Project>

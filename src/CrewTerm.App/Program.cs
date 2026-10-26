@@ -1,15 +1,24 @@
-using System.Reflection;
 using System.Text;
-using System.Text.Json;
+using CrewTerm.App.Cli;
+using CrewTerm.App.Client;
 using CrewTerm.App.Server;
-using CrewTerm.App.UI;
-using CrewTerm.Automation;
+using CrewTerm.App.UI.Windows;
+using CrewTerm.Automation.Agents;
+using CrewTerm.Core.IO;
 using Terminal.Gui.App;
 
 namespace CrewTerm.App;
 
+/// <summary>
+/// <c>crewterm.exe</c> 入口：解析命令行并分派到工作台界面、daemon、Provider hook 回调或非交互子命令。
+/// </summary>
 internal static class Program
 {
+    /// <summary>
+    /// 进程入口。
+    /// </summary>
+    /// <param name="args">命令行参数。</param>
+    /// <returns>退出码：0 成功；1 失败（错误信息写入标准错误，daemon 的错误同时追加到错误日志）。</returns>
     [STAThread]
     private static int Main(string[] args)
     {
@@ -18,119 +27,114 @@ internal static class Program
         try
         {
             options = CrewTermCommandLine.Parse(args);
-            if (options.Command is "help" or "h") { Console.WriteLine(Help); return 0; }
-            if (options.Command == "version") { Console.WriteLine("CrewTerm 0.1.0"); return 0; }
+            if (options.Command is "help" or "h") { Console.WriteLine(CrewTermHelp.Text); return 0; }
+            if (options.Command == "version") { Console.WriteLine("CrewTerm " + CrewTermVersion.Current); return 0; }
             if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("This release requires Windows 10 1809 or later (ConPTY).");
-            if (options.Command == "server")
+            return options.Command switch
             {
-                using var host = new DaemonHost(options.StateDirectory);
-                host.RunAsync().GetAwaiter().GetResult();
-                return 0;
-            }
-            if (options.Command == "doctor")
-            {
-                Console.WriteLine($"CrewTerm 0.1.0 | {Environment.OSVersion}\nState: {options.StateDirectory}");
-                foreach (var item in new AgentCatalog(options.StateDirectory).Discover())
-                    Console.WriteLine($"{item.Profile.Name,-18} {item.ExecutablePath ?? "not installed"}");
-                return 0;
-            }
-            EnsureDaemonAsync(options.StateDirectory).GetAwaiter().GetResult();
-            if (options.Command != "ui") return ExecuteAsync(options).GetAwaiter().GetResult();
-            bool inputDrained;
-            using (var app = Application.Create())
-            {
-                app.Init();
-                var window = new WorkspaceWindow(app, options);
-                try { app.Run(window); }
-                finally { window.Dispose(); }
-                inputDrained = window.InputDrained;
-            }
-            if (!inputDrained)
-            {
-                Console.Error.WriteLine("CrewTerm: some input could not be delivered. Reconnect and inspect the terminal before retrying a command.");
-                return 1;
-            }
-            return 0;
+                "agent-hook" => AgentHookCli.RunAsync(options).GetAwaiter().GetResult(),
+                "server" => RunServer(options),
+                "doctor" => Doctor(options),
+                "ui" => RunWorkspace(options),
+                "stop" => StopAsync(options).GetAwaiter().GetResult(),
+                _ => RunCommandAsync(options).GetAwaiter().GetResult()
+            };
         }
         catch (Exception error)
         {
             Console.Error.WriteLine("CrewTerm: " + error.Message);
             if (options?.Command == "server")
             {
-                try { File.AppendAllText(Path.Combine(options.StateDirectory, "server-error.log"), $"{DateTimeOffset.Now:O} {error}\n"); }
-                catch (IOException) { }
+                try { File.AppendAllText(StateFiles.PathOf(options.StateDirectory, StateFiles.ServerErrorLog), $"{DateTimeOffset.Now:O} {error}\n"); }
+                catch (Exception logError) when (logError is IOException or UnauthorizedAccessException) { }
             }
             return 1;
         }
     }
 
-    internal static async Task EnsureDaemonAsync(string stateDirectory)
+    /// <summary>
+    /// 以 daemon 身份运行，直到收到 <c>stop</c> 请求。
+    /// </summary>
+    /// <param name="options">已解析的命令行。</param>
+    /// <returns>退出码 0。</returns>
+    private static int RunServer(CrewTermCommandLine options)
     {
-        var client = new DaemonClient(stateDirectory);
-        try { if ((await client.CallAsync(new("ping"))).Ok) return; }
-        catch (Exception e) when (e is IOException or TimeoutException or OperationCanceledException) { }
-        Directory.CreateDirectory(stateDirectory);
-        var processPath = Environment.ProcessPath ?? throw new InvalidOperationException("Executable path unavailable");
-        var arguments = new List<string>();
-        if (Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
-            arguments.Add(Assembly.GetExecutingAssembly().Location);
-        arguments.Add("--server");
-        arguments.Add("--state-dir");
-        arguments.Add(Path.GetFullPath(stateDirectory));
-        DetachedProcess.Start(processPath, arguments);
-        for (var i = 0; i < 30; i++)
-        {
-            try { if ((await client.CallAsync(new("ping"))).Ok) return; }
-            catch (Exception e) when (e is IOException or TimeoutException or OperationCanceledException) { }
-            await Task.Delay(100);
-        }
-        throw new IOException("Session server did not start. Inspect server-error.log in " + stateDirectory);
-    }
-
-    private static async Task<int> ExecuteAsync(CrewTermCommandLine options)
-    {
-        string Required(string key) => options.Get(key) ?? throw new ArgumentException("Required: --" + key);
-        var id = options.Get("id") ?? options.Positionals.FirstOrDefault();
-        var request = options.Command switch
-        {
-            "sessions" => new DaemonRequest("list"),
-            "new" => new("create", Command: Required("command"), WorkingDirectory: options.Get("project") ?? Environment.CurrentDirectory, Name: options.Get("name")),
-            "send" => new("input", SessionId: id, Text: Required("text")),
-            "read" => new("screen", SessionId: id),
-            "close" => new("close", SessionId: id),
-            "stop" => new("stop"),
-            "tasks" => new("task-list"),
-            "run" => new("task-start", Command: Required("command"), WorkingDirectory: options.Get("project") ?? Environment.CurrentDirectory, Name: options.Get("name") ?? "Command"),
-            "task" => new("task-get", SessionId: id),
-            "cancel" => new("task-cancel", SessionId: id),
-            _ => throw new ArgumentException("Unknown command: " + options.Command + ". Use --help.")
-        };
-        var response = await new DaemonClient(options.StateDirectory).CallAsync(request);
-        if (!response.Ok) throw new InvalidOperationException(response.Error);
-        Console.WriteLine(options.Command == "read" ? response.Text : JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
+        using var host = new DaemonHost(options.StateDirectory);
+        host.RunAsync().GetAwaiter().GetResult();
         return 0;
     }
 
-    internal const string Help = """
-        CrewTerm 0.1.0 — multi-agent terminal workspace (Windows / C#)
+    /// <summary>
+    /// 列出本机已安装的 Agent CLI，不连接也不启动 daemon。
+    /// </summary>
+    /// <param name="options">已解析的命令行。</param>
+    /// <returns>退出码 0。</returns>
+    private static int Doctor(CrewTermCommandLine options)
+    {
+        Console.WriteLine($"CrewTerm {CrewTermVersion.Current} | {Environment.OSVersion}\nState: {options.StateDirectory}");
+        foreach (var item in new AgentCatalog(options.StateDirectory).Discover())
+            Console.WriteLine($"{item.Profile.Name,-18} {item.ExecutablePath ?? "not installed"}");
+        return 0;
+    }
 
-        crewterm [--project PATH] [--state-dir PATH]     Open workspace
-        crewterm doctor                                Discover installed agent CLIs
-        crewterm sessions                              List live terminals (JSON)
-        crewterm new --command "claude" --project PATH  Start an embedded terminal
-        crewterm send ID --text "..."                   Send literal input
-        crewterm read ID                               Read terminal screen
-        crewterm close ID                              Terminate a terminal
-        crewterm run --command "dotnet test" --project PATH
-        crewterm tasks | task ID | cancel ID            Background jobs
-        crewterm stop                                  Stop daemon, terminals and jobs
+    /// <summary>
+    /// 停止 daemon；daemon 未运行时直接说明，而不是先启动一个再停止它。
+    /// </summary>
+    /// <param name="options">已解析的命令行。</param>
+    /// <returns>退出码 0。</returns>
+    private static async Task<int> StopAsync(CrewTermCommandLine options)
+    {
+        if (await DaemonLauncher.TryPingAsync(options.StateDirectory) is null)
+        {
+            Console.WriteLine("CrewTerm daemon is not running.");
+            return 0;
+        }
+        return await CliCommands.ExecuteAsync(options, CliCommands.BuildRequest(options));
+    }
 
-        F1 Help  F2 Project  F3 Agent  F4 Files  F5 Save  F6 Git
-        F7 Tasks  F8 Split  F9 Commands  F10 Detach
-        Ctrl+Shift+P Commands | Ctrl+Shift+V Paste | Ctrl+Shift+C Copy screen
-        Alt+1/2 Terminal focus | Alt+3 Editor | Alt+4 Files | Alt+5 Agents
+    /// <summary>
+    /// 执行一个非交互子命令：先校验参数，再连接（必要时启动）daemon。
+    /// </summary>
+    /// <param name="options">已解析的命令行。</param>
+    /// <returns>退出码 0。</returns>
+    private static async Task<int> RunCommandAsync(CrewTermCommandLine options)
+    {
+        var request = CliCommands.BuildRequest(options);
+        await ConnectAsync(options);
+        return await CliCommands.ExecuteAsync(options, request);
+    }
 
-        Detaching keeps sessions/tasks alive. Explicit Close/Stop terminates them.
-        Agent authentication and billing belong to each installed CLI.
-        """;
+    /// <summary>
+    /// 打开全屏工作台，直到用户分离（F10）或停止服务。
+    /// </summary>
+    /// <param name="options">已解析的命令行。</param>
+    /// <returns>退出码：已接受的终端输入全部送达为 0，否则为 1。</returns>
+    private static int RunWorkspace(CrewTermCommandLine options)
+    {
+        ConnectAsync(options).GetAwaiter().GetResult();
+        bool inputDrained;
+        using (var app = Application.Create())
+        {
+            app.Init();
+            var window = new WorkspaceWindow(app, options);
+            try { app.Run(window); }
+            finally { window.Dispose(); }
+            inputDrained = window.InputDrained;
+        }
+        if (inputDrained) return 0;
+        Console.Error.WriteLine("CrewTerm: some input could not be delivered. Reconnect and inspect the terminal before retrying a command.");
+        return 1;
+    }
+
+    /// <summary>
+    /// 确保 daemon 正在运行，并记录旧版 daemon 的兼容性警告。
+    /// </summary>
+    /// <param name="options">已解析的命令行；警告写入 <see cref="CrewTermCommandLine.ServerCompatibilityWarning"/>。</param>
+    /// <returns>表示连接过程的任务。</returns>
+    private static async Task ConnectAsync(CrewTermCommandLine options)
+    {
+        var handshake = await DaemonLauncher.EnsureRunningAsync(options.StateDirectory);
+        options.ServerCompatibilityWarning = CrewTermVersion.ServerWarning(handshake);
+        if (options.ServerCompatibilityWarning is { } warning) Console.Error.WriteLine("CrewTerm: " + warning);
+    }
 }

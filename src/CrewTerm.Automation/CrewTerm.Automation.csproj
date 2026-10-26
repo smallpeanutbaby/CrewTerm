@@ -1,3 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><AssemblyName>CrewTerm.Automation</AssemblyName><RootNamespace>CrewTerm.Automation</RootNamespace></PropertyGroup>
+  <ItemGroup>
+    <!-- 使用 Core 的状态文件命名与跨进程安全的 JSON 持久化；不依赖终端、文件区或 UI。 -->
+    <ProjectReference Include="../CrewTerm.Core/CrewTerm.Core.csproj" />
+  </ItemGroup>
 </Project>

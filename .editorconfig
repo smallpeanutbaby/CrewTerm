@@ -1,0 +1,24 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+
+[*.cs]
+indent_size = 4
+# 未使用的 using 在构建时报告（需要 GenerateDocumentationFile，见 Directory.Build.props）。
+dotnet_diagnostic.IDE0005.severity = warning
+
+[*.{csproj,props,targets,slnx,json,yml,yaml}]
+indent_size = 2
+
+# 命名空间必须与文件夹一致（IDE0130）：src/CrewTerm.Core/IO/AtomicFile.cs 的命名空间是 CrewTerm.Core.IO。
+[*.cs]
+dotnet_style_namespace_match_folder = true
+dotnet_diagnostic.IDE0130.severity = warning
+
+# 这个 PowerShell 夹具同时以链接方式编入 App.Tests，物理位置决定了它的命名空间。
+[tests/CrewTerm.Automation.Tests/Fixtures/PowerShellFixture.cs]
+dotnet_diagnostic.IDE0130.severity = none

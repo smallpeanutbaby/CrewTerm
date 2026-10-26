@@ -1,0 +1,95 @@
+using CrewTerm.Core.Projects;
+using CrewTerm.Core.Settings;
+
+namespace CrewTerm.Core.IO;
+
+/// <summary>
+/// 状态目录（默认 <c>%LOCALAPPDATA%\CrewTerm</c>）中各文件的统一命名。
+/// </summary>
+/// <remarks>
+/// UI 客户端、后台 daemon 和各业务层共享同一个状态目录。文件名集中定义在这里，
+/// 防止同一文件名在多个程序集里以字符串字面量重复出现、改名时漏改。
+/// 使用 <c>--state-dir</c> 可以创建互相独立的工作台实例。
+/// </remarks>
+public static class StateFiles
+{
+    /// <summary>
+    /// 侧边栏项目列表（<see cref="ProjectCatalog"/>）。
+    /// </summary>
+    public const string Projects = "projects.json";
+
+    /// <summary>
+    /// 布局、上次选择、并发上限与命令模板（<see cref="WorkspaceSettingsStore"/>）。
+    /// </summary>
+    public const string Workspace = "workspace.json";
+
+    /// <summary>
+    /// 用户自定义的 Agent 配置（内置配置不落盘）。
+    /// </summary>
+    public const string AgentProfiles = "agent-profiles.json";
+
+    /// <summary>
+    /// 流水线模板。
+    /// </summary>
+    public const string PipelineTemplates = "pipeline-templates.json";
+
+    /// <summary>
+    /// 已完成后台任务的历史记录。
+    /// </summary>
+    public const string TaskHistory = "task-history.json";
+
+    /// <summary>
+    /// daemon 记录的终端会话启动信息，供“重新启动已保存会话”使用。
+    /// </summary>
+    public const string SavedSessions = "saved-sessions.json";
+
+    /// <summary>
+    /// 终端会话的持久化目录（启动命令、Provider 与原生会话标识），会话进程退出后仍保留。
+    /// </summary>
+    public const string NativeSessions = "native-sessions.json";
+
+    /// <summary>
+    /// Agent 语义状态、通知与会话间消息。
+    /// </summary>
+    public const string AgentActivity = "agent-activity.json";
+
+    /// <summary>
+    /// 已登记的本地插件及其启用状态。
+    /// </summary>
+    public const string LocalPlugins = "local-plugins.json";
+
+    /// <summary>
+    /// 为单次 Provider 启动生成的 hook 配置目录，每个会话一个 <c>&lt;会话标识&gt;.json</c>。
+    /// </summary>
+    public const string ProviderHooks = "provider-hooks";
+
+    /// <summary>
+    /// 文件检查点目录，每个项目一个以路径哈希命名的子目录。
+    /// </summary>
+    public const string Checkpoints = "checkpoints";
+
+    /// <summary>
+    /// daemon 独占锁文件，保证同一状态目录只运行一个 daemon。
+    /// </summary>
+    public const string ServerLock = "server.lock";
+
+    /// <summary>
+    /// daemon 启动或运行失败时追加写入的错误日志。
+    /// </summary>
+    public const string ServerErrorLog = "server-error.log";
+
+    /// <summary>
+    /// 未指定 <c>--state-dir</c> 时使用的默认状态目录。
+    /// </summary>
+    public static string DefaultDirectory =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrewTerm");
+
+    /// <summary>
+    /// 组合状态目录与状态文件名，返回绝对路径。
+    /// </summary>
+    /// <param name="stateDirectory">状态目录，可以是相对路径。</param>
+    /// <param name="fileName">本类中定义的文件名常量。</param>
+    /// <returns>状态文件的绝对路径。</returns>
+    public static string PathOf(string stateDirectory, string fileName) =>
+        Path.Combine(Path.GetFullPath(stateDirectory), fileName);
+}
