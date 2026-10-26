@@ -179,7 +179,7 @@ public sealed partial class AgentActivityStore
     /// 观察终端输出，只识别已知的审批提示；普通文本和长时间无输出都不会被当作完成。
     /// </summary>
     /// <remarks>
-    /// <para>把输出追加到该会话的近期输出缓存（只保留末尾 4096 个字符），去掉 ANSI CSI 控制序列后，
+    /// <para>把输出追加到该会话的近期输出缓存（只保留末尾 4096 个字符），按 <see cref="PlainText"/> 去掉终端控制序列后，
     /// 按行首匹配 <c>Do you want to proceed?</c>、<c>Would you like to proceed?</c>、<c>Allow this command?</c>
     /// （不区分大小写）；匹配时把状态转为 <see cref="AgentActivityState.Blocked"/>，来源为 <c>screen</c>。</para>
     /// <para>会话已退出，或当前观测来自 <c>api</c> / <c>hook</c> 这类更可靠的显式来源时，直接忽略输出，
@@ -328,21 +328,43 @@ public sealed partial class AgentActivityStore
     private static partial Regex ApprovalPrompt();
 
     /// <summary>
-    /// 去掉终端输出中的 ANSI CSI 控制序列，得到用于识别提示的纯文本。
+    /// 去掉终端输出中的控制序列，得到用于识别提示的纯文本：文字在屏幕上从第几列开始，纯文本中就尽量从同样的位置开始。
     /// </summary>
     /// <remarks>
-    /// 把光标换行或定位到某行的序列（<c>CUP H</c>、<c>HVP f</c>、<c>VPA d</c>、<c>CNL E</c>、<c>CPL F</c>）换成换行而不是直接删除：
-    /// Windows ConPTY 重绘屏幕时常用这些序列代替换行符，直接删除会把新的一行接到上一行末尾，使行首的提示无法识别。
+    /// <para>Windows ConPTY 输出的不是程序写出的原始字节，而是它对屏幕变化的重绘，同一段文字在不同版本、不同时机下的编码不同：</para>
+    /// <list type="bullet">
+    /// <item><description>把光标换行或定位到某行的 CSI 序列（<c>CUP H</c>、<c>HVP f</c>、<c>VPA d</c>、<c>CNL E</c>、<c>CPL F</c>）
+    /// 以及回到第 1 列的 <c>CHA G</c> 换成换行；直接删除会把新的一行接到上一行末尾，使行首的提示无法识别。</description></item>
+    /// <item><description>光标右移 <c>CUF C</c> 换成同样数量的空格：重绘时连续的空格常被编码为右移，直接删除会把
+    /// <c>Do you want</c> 变成 <c>Doyouwant</c>。</description></item>
+    /// <item><description>OSC 序列（例如设置窗口标题的 <c>ESC ] 0 ; … BEL</c>）与其他 <c>ESC</c> 开头的短序列整段删除；
+    /// 标题变化可能恰好输出在提示文字所在行的开头。</description></item>
+    /// <item><description>后面不是换行符的回车 <c>CR</c> 换成换行：回车之后的文字从第 1 列开始显示。</description></item>
+    /// </list>
+    /// <para>其余 CSI 序列（颜色、清除、光标显示等）直接删除。</para>
     /// </remarks>
     /// <param name="text">终端输出。</param>
     /// <returns>纯文本。</returns>
-    private static string PlainText(string text)
-        => AnsiControl().Replace(text, match => match.ValueSpan[^1] is 'H' or 'f' or 'd' or 'E' or 'F' ? "\n" : "");
+    private static string PlainText(string text) => TerminalControl().Replace(text, match =>
+    {
+        var value = match.ValueSpan;
+        if (value[0] == '\r') return "\n";
+        if (value.Length < 2 || value[1] != '[') return "";
+        var parameter = value[2..^1];
+        return value[^1] switch
+        {
+            'H' or 'f' or 'd' or 'E' or 'F' => "\n",
+            'G' => parameter.IsEmpty || parameter is "1" ? "\n" : "",
+            'C' => new string(' ', int.TryParse(parameter, out var count) ? Math.Clamp(count, 1, 256) : 1),
+            _ => ""
+        };
+    });
 
     /// <summary>
-    /// 匹配 ANSI CSI 控制序列（<c>ESC [</c> 参数字节、中间字节、结束字节）的正则，用于在识别提示前去掉颜色和光标控制。
+    /// 匹配需要在识别提示前处理的终端控制内容：后面不是换行符的回车、OSC 序列（以 <c>BEL</c> 或 <c>ESC \</c> 结束）、
+    /// CSI 序列（<c>ESC [</c> 参数字节、中间字节、结束字节），以及其他 <c>ESC</c> 开头的短序列。
     /// </summary>
     /// <returns>由源生成器生成的正则实例。</returns>
-    [GeneratedRegex("\u001b\\[[0-?]*[ -/]*[@-~]")]
-    private static partial Regex AnsiControl();
+    [GeneratedRegex("\r(?!\n)|\u001b\\][^\u0007\u001b]*(?:\u0007|\u001b\\\\)|\u001b\\[[0-?]*[ -/]*[@-~]|\u001b[ -/]*[0-~]")]
+    private static partial Regex TerminalControl();
 }

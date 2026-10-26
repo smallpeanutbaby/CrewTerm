@@ -74,7 +74,11 @@ public sealed class TuiSmokeTests
             await WaitUntil(() => !terminal.Screen.GetText().Contains("Project: Add folder") && terminal.Screen.GetText().Contains("Checkpoints: Capture"), terminal, "palette filter");
             terminal.Write("\r");
             await WaitUntil(() => terminal.Screen.GetText().Contains("Capture current project files"), terminal, "chosen palette action");
-            terminal.Write("\u001b"); await Task.Delay(250); terminal.Write("\u001bOR");
+            terminal.Write("\u001b");
+            await WaitUntil(() => !terminal.Screen.GetText().Contains("Capture current project files"), terminal, "palette action dialog closed");
+            // 对话框关闭后工作台才重新位于最上层、接受 F3；负载高时关闭可能晚于按键，或 Esc 与紧随的 F3 被一起解析，未打开就重按。
+            await RetryUntil(terminal, () => { terminal.Write("\u001bOR"); return Task.CompletedTask; },
+                () => terminal.Screen.GetText().Contains("Custom command"));
             await WaitUntil(() => terminal.Screen.GetText().Contains("Custom command"), terminal, "agent chooser");
             terminal.Write("custom command"); await Task.Delay(250); terminal.Write("\r");
             await WaitUntil(() => terminal.Screen.GetText().Contains("Custom terminal"), terminal, "custom command prompt");
