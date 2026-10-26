@@ -1,4 +1,4 @@
-namespace CrewTerm.Automation.Agents;
+namespace CrewTerm.Core.IO;
 
 /// <summary>
 /// 按 PATH（Windows 上还有 PATHEXT）规则查找可执行文件，行为与系统命令行解析一致。
@@ -7,6 +7,8 @@ namespace CrewTerm.Automation.Agents;
 /// <para>Windows：npm 全局安装的 CLI 同时存在无扩展名的 Unix 脚本和 <c>.cmd</c> 启动脚本；
 /// 对无扩展名的名称会先按 PATHEXT 尝试 <c>.COM/.EXE/.BAT/.CMD</c>，因此会找到可在 Windows 运行的版本。</para>
 /// <para>Linux / macOS：只接受有执行权限（任一身份）的普通文件，与 Shell 的查找规则一致。</para>
+/// <para>只查找 PATH 中的绝对路径条目，从不查找进程的当前目录：Agent 发现与 Git 调用都先用它解析出绝对路径再启动，
+/// 防止在不受信任的项目目录中启动 CrewTerm 时，目录中的同名程序被系统的默认搜索顺序选中。</para>
 /// <para>本类只检查文件，不会启动程序。</para>
 /// </remarks>
 public static class ExecutableLocator

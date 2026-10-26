@@ -10,6 +10,7 @@ namespace CrewTerm.Automation.Tasks;
 /// <remarks>
 /// <list type="bullet">
 /// <item><description>命令通过系统 Shell 执行（Windows 为 <c>cmd.exe /d /s /c</c>，其他平台为 <c>/bin/sh -c</c>），标准输入立即关闭。</description></item>
+/// <item><description>Windows 上设置 <c>NoDefaultCurrentDirectoryInExePath=1</c>：cmd 不在工作目录中查找裸程序名，与终端会话的规则一致。</description></item>
 /// <item><description>标准输出与标准错误并发读取、按到达顺序合并，只保留最近 <c>maxOutputCharacters</c> 个字符。</description></item>
 /// <item><description>取消时结束整个进程树，结果仍记录实际退出码并标记为已取消。</description></item>
 /// </list>
@@ -150,6 +151,9 @@ public sealed class TaskRunner
             // 只能由内层 cmd 在 chcp 完成之后解释。
             var commandVariable = "CREWTERM_TASK_COMMAND_" + Guid.NewGuid().ToString("N");
             start.Environment[commandVariable] = "\"" + command + "\"";
+            // 与终端会话一致：cmd 默认先在当前目录（项目目录）中查找裸程序名，不受信任的仓库可以用同名的
+            // dotnet.bat、git.cmd 甚至 chcp.bat 劫持任务命令；设置后只在 PATH 中查找，项目内的脚本需写成 .\build.cmd。
+            start.Environment["NoDefaultCurrentDirectoryInExePath"] = "1";
             start.Arguments = "/d /v:on /s /c \"chcp 65001 >nul & \"" + start.FileName
                 + "\" /d /v:off /s /c !" + commandVariable + "!\"";
         }

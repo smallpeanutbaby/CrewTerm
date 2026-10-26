@@ -31,7 +31,7 @@ public sealed class TaskHistory
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stateDirectory);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxEntries);
-        Directory.CreateDirectory(stateDirectory);
+        StateFiles.EnsureDirectory(stateDirectory);
         path = StateFiles.PathOf(stateDirectory, StateFiles.TaskHistory);
         this.maxEntries = maxEntries;
         _ = List();

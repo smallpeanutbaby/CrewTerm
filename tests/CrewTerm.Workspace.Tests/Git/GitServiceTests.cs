@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using CrewTerm.Workspace.Git;
 using CrewTerm.Workspace.Tests.Fixtures;
 
@@ -179,5 +180,34 @@ public class GitServiceTests
         Assert.Equal(System.IO.Path.TrimEndingDirectorySeparator(path), created.Path);
         await git.RemoveWorktreeAsync(repo.Root, path);
         Assert.Single(await git.ListWorktreesAsync(repo.Root));
+    }
+
+    /// <summary>
+    /// 验证：搜索路径中没有 Git 时，操作以 <see cref="GitOperationException"/> 失败并提示安装 Git，
+    /// 而不是把裸程序名交给系统——系统的默认搜索会先查找本进程的当前目录（不受信任的仓库可以在那里放一个同名程序），
+    /// 也会找到本机 PATH 中真实的 git。
+    /// </summary>
+    [Fact]
+    public async Task MissingGitOnSearchPathFailsInsteadOfFallingBackToSystemSearch()
+    {
+        using var repo = new TempWorkspace();
+        await repo.InitRepo();
+        var error = await Assert.ThrowsAsync<GitOperationException>(() => new GitService(repo.Root).GetChangesAsync(repo.Root));
+        Assert.Contains("Cannot find Git", error.Message);
+    }
+
+    /// <summary>
+    /// 验证（Linux / macOS）：Git 以搜索路径中解析出的绝对路径启动——搜索目录中放一个总是输出固定路径的伪造 <c>git</c>，
+    /// 读取仓库根目录得到的就是它的输出。
+    /// </summary>
+    [UnixFact]
+    [UnsupportedOSPlatform("windows")]
+    public async Task RunsTheGitResolvedFromTheSearchPath()
+    {
+        using var repo = new TempWorkspace();
+        var git = repo.Write("fake bin/git", "#!/bin/sh\necho /resolved/from/search/path\n");
+        File.SetUnixFileMode(git, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var root = await new GitService(System.IO.Path.GetDirectoryName(git)).GetRepositoryRootAsync(repo.Root);
+        Assert.Equal("/resolved/from/search/path", root);
     }
 }

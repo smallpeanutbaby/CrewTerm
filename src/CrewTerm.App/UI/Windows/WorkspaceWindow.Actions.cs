@@ -379,13 +379,12 @@ public sealed partial class WorkspaceWindow
     }
 
     /// <summary>
-    /// 询问要查找的文本，在编辑器中从光标处查找下一处（不区分大小写）并选中，然后显示文件区并聚焦编辑器。
+    /// 询问要查找的文本，在编辑器中从光标处查找下一处（不区分大小写，见 <see cref="Dialogs.Find"/>），然后显示文件区并聚焦编辑器。
     /// </summary>
     private void FindInFile()
     {
-        var query = Dialogs.Prompt(application, "Find in file", "Text");
-        if (string.IsNullOrEmpty(query)) return;
-        editor.View.FindNext(query, false, false); ShowFiles(); editor.View.SetFocus();
+        Dialogs.Find(application, editor.View, "Find in file");
+        ShowFiles(); editor.View.SetFocus();
     }
 
     /// <summary>

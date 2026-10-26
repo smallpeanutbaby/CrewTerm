@@ -118,6 +118,8 @@ internal static class Dialogs
         using var dialog = new Dialog { Title = title, Width = Dim.Percent(95), Height = Dim.Percent(92) };
         var editor = new CodeEditor { X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill(2), ReadOnly = true,
             Document = new TextDocument(DisplayText.Sanitize(text)), WordWrap = false, ViewportSettings = ViewportSettingsFlags.HasScrollBars };
+        // 编辑器控件对 Ctrl+F 只发出 FindRequested 事件，由使用方提供查找框。
+        editor.FindRequested += (_, _) => Find(app, editor, "Find in text");
         dialog.Add(editor);
         dialog.AddButton(new Button { Text = "Close" });
         editor.SetFocus();
@@ -125,12 +127,34 @@ internal static class Dialogs
     }
 
     /// <summary>
+    /// 询问要查找的文本，在编辑器中从光标处向后查找下一处（不区分大小写）并选中，然后把焦点还给编辑器。
+    /// </summary>
+    /// <remarks>
+    /// 只读文本查看器与工作台的代码编辑器在收到 Ctrl+F（<see cref="CodeEditor.FindRequested"/>）时共用本方法。
+    /// 输入为空或取消时什么也不做。
+    /// </remarks>
+    /// <param name="app">Terminal.Gui 应用实例。</param>
+    /// <param name="editor">要在其中查找的编辑器控件。</param>
+    /// <param name="title">查找框的标题。</param>
+    public static void Find(IApplication app, CodeEditor editor, string title)
+    {
+        var query = Prompt(app, title, "Text");
+        if (!string.IsNullOrEmpty(query)) editor.FindNext(query, false, false);
+        editor.SetFocus();
+    }
+
+    /// <summary>
     /// 显示确认框；默认按钮是 Cancel，防止误按 Enter 执行危险操作。
     /// </summary>
+    /// <remarks>
+    /// <see cref="MessageBox"/> 总是把最后一个按钮作为默认按钮（直接按 Enter 时触发），因此 Cancel 必须放在最后。
+    /// 确认需要明确的动作：按 Alt+O 或点击 Confirm；直接按 Enter、Esc 或 Alt+C 都是取消。
+    /// Alt+C 与 <c>Unsaved changes</c> 对话框中的含义相同（取消），避免习惯性按键误执行危险操作。
+    /// </remarks>
     /// <param name="app">Terminal.Gui 应用实例。</param>
     /// <param name="title">对话框标题。</param>
     /// <param name="text">说明文字。</param>
     /// <returns>用户选择 Confirm 时为 <see langword="true"/>。</returns>
     public static bool Confirm(IApplication app, string title, string text) =>
-        MessageBox.Query(app, title, text, ["Cancel", "Confirm"]) == 1;
+        MessageBox.Query(app, title, text, ["C_onfirm", "_Cancel"]) == 0;
 }

@@ -64,7 +64,7 @@
 ```
 src/
 ├─ CrewTerm.Core/            基础设施与共享模型（不依赖任何项目）
-│  ├─ IO/                    AtomicFile、AtomicJsonStore、FileSystemPath、StateFiles
+│  ├─ IO/                    AtomicFile、AtomicJsonStore、FileSystemPath、StateFiles、ExecutableLocator
 │  ├─ Projects/              ProjectCatalog、ProjectEntry、WorkspaceNavigation
 │  ├─ Settings/              WorkspaceSettings、WorkspaceSettingsStore、CommandTemplate
 │  ├─ Layouts/               TerminalLayout、TerminalTab、LayoutNode、LayoutGeometry、LayoutRect、LayoutPlacement、SplitAxis、SplitDirection
@@ -82,7 +82,7 @@ src/
 ├─ CrewTerm.Automation/      命令执行、Agent 状态与协作、原生会话、插件（依赖 Core）
 │  ├─ Tasks/                 TaskRunner、TaskRunResult、TaskHistory、CommandTask、BoundedTextBuffer
 │  ├─ Pipelines/             PipelineRunner、PipelineResult、PipelineTemplate、PipelineStepTemplate、PipelineTemplateStore
-│  ├─ Agents/                AgentCatalog、AgentProfile、AgentAvailability、ExecutableLocator
+│  ├─ Agents/                AgentCatalog、AgentProfile、AgentAvailability
 │  ├─ Activity/              AgentActivityStore（含 Mailbox 分部）、AgentActivity、AgentActivityState、AgentNotification、AgentMessage、AgentActivitySnapshot
 │  ├─ Hooks/                 AgentHookEvent、AgentHookLaunchService、AgentHookLaunch
 │  ├─ Providers/             ProviderSessionService、ProviderCommandLine、CommandToken、ProviderLaunchPlan、ProviderResumeCapability、NativeSessionStore、NativeSessionRecord

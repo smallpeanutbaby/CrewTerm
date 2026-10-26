@@ -139,7 +139,9 @@ public static class AtomicJsonStore
     /// <param name="bytes">要写入的完整内容。</param>
     private static void WriteBytes(string path, byte[] bytes)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        // 状态文件都直接位于状态目录中：目录尚不存在时按状态目录的规则创建（Unix 上为 0700），
+        // 而不是按 umask 创建出其他用户可读的目录。
+        StateFiles.EnsureDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         AtomicFile.WriteAllBytes(path, bytes);
     }
 

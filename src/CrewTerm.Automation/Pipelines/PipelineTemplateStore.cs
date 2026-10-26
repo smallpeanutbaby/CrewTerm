@@ -23,7 +23,7 @@ public sealed class PipelineTemplateStore
     public PipelineTemplateStore(string stateDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stateDirectory);
-        Directory.CreateDirectory(stateDirectory);
+        StateFiles.EnsureDirectory(stateDirectory);
         path = StateFiles.PathOf(stateDirectory, StateFiles.PipelineTemplates);
         _ = List();
     }

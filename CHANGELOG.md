@@ -28,6 +28,10 @@
 - 各版本的验证记录移到 `docs/verification/`，发布包中的 `docs/` 只包含用户文档。
 - `crewterm --help` 与 F1 帮助的标题列出三个支持的平台；F1 帮助中发送保留键的命令名与命令面板一致；
   插件清单查看器在 Linux / macOS 上不再提示“Windows 用户”。
+- 确认框（终止会话、停止全部、多行粘贴、删除 worktree、恢复检查点等）的默认按钮改为 `Cancel`：直接按 Enter 或 Esc 都是取消，
+  确认需要按 Alt+O 或点击 `Confirm`；Alt+C 与 `Unsaved changes` 中一样表示取消。
+- Windows 上的后台任务、命令模板与流水线不再执行项目目录中与裸程序名同名的脚本，项目内的脚本需写成 `.\build.cmd`（与终端会话一致）。
+- `ExecutableLocator` 移到 `CrewTerm.Core.IO`，Agent 发现与 Git 调用共用同一套查找规则。
 
 ### 安全
 
@@ -36,6 +40,18 @@
 - Linux / macOS：创建伪终端子进程期间屏蔽信号，`exec` 之前不会运行继承来的运行时信号处理程序。
 - Linux / macOS：含 Shell 展开语法（`$`、反引号、反斜杠等）的路径不会嵌入 Provider hook 命令，
   含这类语法的启动命令需要显式登记恢复命令，不会被自动改写。
+- Git 先在 `PATH` 的绝对路径条目中解析出绝对路径再启动（Windows 上只接受 `git.exe`）。此前以裸程序名 `git` 启动，
+  Windows 的 `CreateProcess` 与 .NET 在 Unix 上的解析都会先查找工作台进程的当前目录：在不受信任的仓库中启动 CrewTerm 时，
+  仓库中的同名程序可能被执行。
+- Windows：后台任务、命令模板与流水线的 cmd 设置 `NoDefaultCurrentDirectoryInExePath=1`，不再先在项目目录中查找裸程序名，
+  项目中的 `dotnet.bat`、`chcp.bat` 等无法劫持任务命令。
+- Linux / macOS：所有入口（包括 `crewterm doctor` 与工作台第一次保存设置）新建的状态目录都是 `0700`，此前部分入口按 umask 创建。
+
+### 修复
+
+- 滚动历史查看器与编辑器中的 Ctrl+F 打开查找框（此前没有反应）。
+- 在收件箱或通知列表中再次打开已读的消息或通知时不再报错。
+- macOS：项目位于符号链接之下（例如 `/var` → `/private/var`）时，Git 改动的相对路径与 worktree 的创建、删除不再出错。
 
 ## [0.2.0] - 2026-10-26
 

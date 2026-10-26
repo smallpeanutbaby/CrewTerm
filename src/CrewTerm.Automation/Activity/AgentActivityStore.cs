@@ -69,7 +69,7 @@ public sealed partial class AgentActivityStore
         ArgumentException.ThrowIfNullOrWhiteSpace(stateDirectory);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumNotifications);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumMessages);
-        Directory.CreateDirectory(stateDirectory);
+        StateFiles.EnsureDirectory(stateDirectory);
         path = StateFiles.PathOf(stateDirectory, StateFiles.AgentActivity);
         this.maximumNotifications = maximumNotifications;
         this.maximumMessages = maximumMessages;

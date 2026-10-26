@@ -72,7 +72,7 @@
 | --- | --- |
 | 输入框 | 在输入框中按 Enter 等同于 `OK`；Esc 或 `Cancel` 取消。多数输入框留空确认也等同于取消。 |
 | 选择器（可过滤列表） | 直接输入文字过滤（不区分大小写的子串匹配，保持原顺序，过滤后默认选中第一项）；↓ 进入列表；Enter 或 `Select` 选择；Esc 或 `Cancel` 取消。列表为空时只弹出 `No entries.` |
-| 确认框 | 按钮为 `Cancel` 与 `Confirm`。**默认按钮是 `Confirm`，直接按 Enter 即确认执行**；不想执行时按 Esc 或选择 `Cancel`。 |
+| 确认框 | 按钮为 `Confirm` 与 `Cancel`。**默认按钮是 `Cancel`，直接按 Enter 或 Esc 都是取消**；要执行时按 Alt+O 或点击 `Confirm`；Alt+C 与 `Unsaved changes` 中一样表示取消。 |
 | 未保存修改 | 标题 `Unsaved changes`，按钮 `Save` / `Discard` / `Cancel`，热键 Alt+S / Alt+D / Alt+C；默认按钮是 `Cancel`。 |
 | 文本查看器 | 只读显示长文本（帮助、diff、滚动历史、任务与插件输出等），可滚动、用 Shift+方向键选择并按 Ctrl+C 复制；`Close` 或 Esc 关闭。 |
 | 错误提示 | 任何操作失败都以标题为 `CrewTerm` 的消息框显示错误信息，按 `OK` 关闭，界面继续运行。 |
@@ -251,7 +251,7 @@
   - 最多 60,000 个字符，超出时报错；
   - 粘贴前去掉 `ESC` 与 C1 控制字符，剪贴板内容无法提前结束 bracketed paste 或注入按键；
   - 子程序开启了 bracketed paste 时整体包裹发送；没有开启而文本含换行或回车时，先弹出 `Multiline paste` 确认框，
-    因为换行可能直接执行命令（确认框的默认按钮是 `Confirm`）。
+    因为换行可能直接执行命令（按 Alt+O 确认粘贴，Enter、Esc 或 Alt+C 取消）。
 - 剪贴板不可用时，复制操作提示 `Clipboard unavailable in this terminal`。
 
 ### 6.4 右键菜单
@@ -278,8 +278,7 @@
   键盘的 PageUp / PageDown 会发给子程序，不滚动本地历史。
 - **历史查看器**：`Terminal: View / search scrollback`（右键 `View / search history`）在只读查看器中显示活动会话的全部历史加当前屏幕文本，
   标题为 `SCROLLBACK · Ctrl+F to find`。查看器中可以用方向键、PageUp / PageDown、Ctrl+Home / Ctrl+End 移动，Shift+方向键选择，
-  Ctrl+C 复制选区（没有选区时复制光标所在行）。
-  注意：当前版本中标题提示的 Ctrl+F 不会打开查找框；需要查找时可以复制出来在编辑器或其他工具中搜索。
+  Ctrl+C 复制选区（没有选区时复制光标所在行）；Ctrl+F 打开 `Find in text` 查找框，输入文字回车后从光标处向后查找下一处（不区分大小写）并选中。
 
 ### 6.6 从 file:line 跳转到代码
 
@@ -375,7 +374,7 @@ Agent 列表与面板标题中的状态标记来自后台服务记录的**语义
 
 ### 7.8 终止会话
 
-`Agent: Terminate selected session` 经确认（`Stop this session and its child processes?`，默认按钮为 `Confirm`）后结束活动面板的会话
+`Agent: Terminate selected session` 经确认（`Stop this session and its child processes?`，按 Alt+O 确认，Enter 取消）后结束活动面板的会话
 及其整个进程树。会话从 Agent 列表中消失，活动面板变为空面板（下一次刷新可能自动显示本项目中另一个未显示的会话）。
 会话记录仍然保留，之后可以恢复原生对话或重新开始。进程自行退出的会话会以 `EXIT 退出码` 留在列表中，直到被终止或遗忘。
 
@@ -451,7 +450,7 @@ Agent 列表与面板标题中的状态标记来自后台服务记录的**语义
 
 - `Editor: Go to line`：输入行号（默认 `1`），超出范围时跳到最近的有效行；输入不是整数时什么也不做。
 - `Editor: Find text`：从光标处向后查找下一处（不区分大小写）并选中。再次查找下一处时重新执行该命令（F3 被工作台占用）；
-  Shift+F3 按同一关键字向前查找上一处。编辑器内的 Ctrl+F / Ctrl+H 不会打开查找框。
+  Shift+F3 按同一关键字向前查找上一处。编辑器内按 Ctrl+F 打开同一个查找框；Ctrl+H 不会打开替换框。
 
 ### 8.6 全文搜索
 

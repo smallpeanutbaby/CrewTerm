@@ -37,7 +37,7 @@ public sealed class AgentCatalog
         if (stateDirectory is not null)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(stateDirectory);
-            Directory.CreateDirectory(stateDirectory);
+            StateFiles.EnsureDirectory(stateDirectory);
             path = StateFiles.PathOf(stateDirectory, StateFiles.AgentProfiles);
         }
         _ = Profiles;

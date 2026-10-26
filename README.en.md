@@ -165,11 +165,10 @@ agent state and notifications, inboxes, plugin registrations, task history and f
 
 - **Only the current user can reach the service.** Both Windows named pipes and Unix domain sockets are restricted to the current user,
   and the client verifies the server's identity. On Linux and macOS, a newly created state directory is `0700`.
-- **Terminal sessions never run programs from the project directory.** A bare program name at the start of a terminal command is
-  looked up only in absolute `PATH` entries, never in the working directory, and cmd inside a Windows session does not search the
-  current directory either, so an untrusted repository cannot shadow `git`, `node` or `ssh`. Run project scripts as `./build.sh` or
-  `.\build.cmd`. Note that on Windows, background tasks, command templates and pipelines run through `cmd.exe`, which searches the
-  project directory first; use absolute program paths when running tasks in an untrusted repository.
+- **No hijacking from the project directory.** A bare program name at the start of a terminal command is looked up only in absolute
+  `PATH` entries, never in the working directory; the Git that CrewTerm runs is resolved the same way; and on Windows, cmd in terminal
+  sessions, background tasks, command templates and pipelines does not search the current directory either. An untrusted repository
+  therefore cannot shadow `git`, `node`, `ssh` or `dotnet`. Run project scripts as `./build.sh` or `.\build.cmd`.
 - **Input cannot escape.** Pasted text, code context and prompts are stripped of `ESC` and other control characters before they reach
   a terminal, so they cannot end a bracketed paste early or inject keystrokes.
 - **Display cannot be injected.** Control characters in session names, messages and plugin names are rejected at the service boundary;

@@ -52,6 +52,7 @@ public sealed partial class WorkspaceWindow
     /// </summary>
     /// <remarks>
     /// 会话仍在列表中时先切换过去；用户因未保存修改取消切换时不标记已读。会话已不存在时只标记已读。
+    /// 选中已读的通知只切换到对应会话，不再重复标记。
     /// </remarks>
     private void NotificationsMenu()
     {
@@ -64,6 +65,8 @@ public sealed partial class WorkspaceWindow
         var notice = ordered[choice];
         var session = sessions.FirstOrDefault(s => s.Id == notice.SessionId);
         if (session is not null && !FocusSession(session)) return;
+        // 已读的通知只切换到对应会话；再次标记会被 daemon 当作“通知不存在或已读”而报错。
+        if (notice.Read) { status.Text = "Selected " + SessionName(notice.SessionId) + "  ·  already read  ·  " + notice.Reason; return; }
         Call(new("notification-read", NotificationId: notice.Id));
         status.Text = "Selected " + SessionName(notice.SessionId) + "  ·  " + notice.Reason;
     }
@@ -141,7 +144,8 @@ public sealed partial class WorkspaceWindow
     }
 
     /// <summary>
-    /// 打开活动面板会话的收件箱：未读在前、按时间从新到旧；选中一条显示全文，并在关闭后确认（标记为已读）。
+    /// 打开活动面板会话的收件箱：未读在前、按时间从新到旧；选中一条显示全文，并在关闭后确认（标记为已读）；
+    /// 已确认的消息只显示全文，不再重复确认。
     /// </summary>
     /// <exception cref="InvalidOperationException">活动面板未绑定会话，或 daemon 调用失败。</exception>
     private void AgentInbox()
@@ -155,6 +159,8 @@ public sealed partial class WorkspaceWindow
         var message = ordered[index];
         Dialogs.Text(application, "INBOX MESSAGE", $"From: {SessionName(message.FromSessionId)}\nTo: {SessionName(id)}\n" +
             $"At: {message.CreatedAt:O}\nMessage: {message.Id}\nIn reply to: {message.InReplyTo ?? "—"}\n\n{message.Text}");
+        // 已确认的消息只供重新阅读；再次确认会被 daemon 当作“消息不存在或已确认”而报错。
+        if (message.Acknowledged) { status.Text = "Message already read: " + message.Id; return; }
         Call(new("message-ack", id, MessageId: message.Id));
         status.Text = "Message marked read: " + message.Id;
     }

@@ -13,7 +13,8 @@ public sealed class TuiSmokeTests
 {
     /// <summary>
     /// 验证：两个客户端连接同一状态目录时，第一个客户端按 F8 开启分割终端后分离并保存布局；第二个客户端分离时发现布局已被其他客户端修改，
-    /// 提示 <c>Layout could not be saved</c>，按 Enter 后仍以退出码 0 分离，且不会覆盖第一个客户端保存的分割设置。
+    /// 提示 <c>Layout could not be saved</c>；直接按 Enter 只关闭确认框（默认按钮是 Cancel），工作区保持打开；
+    /// 再次分离并按 Alt+O 确认后以退出码 0 分离，且不会覆盖第一个客户端保存的分割设置。
     /// </summary>
     [Fact]
     public async Task ConcurrentLayoutChangeCanDetachWithoutOverwritingOtherClient()
@@ -33,7 +34,14 @@ public sealed class TuiSmokeTests
             Assert.True(new CrewTerm.Core.Settings.WorkspaceSettingsStore(state).Load().SplitTerminals);
             second.Write("\u001b[21~");
             await WaitUntil(() => second.Screen.GetText().Contains("Layout could not be saved"), second, "concurrent layout choice");
+            // 确认框的默认按钮是 Cancel：直接按 Enter 只关闭对话框，工作区保持打开。
             second.Write("\r");
+            await WaitUntil(() => !second.Screen.GetText().Contains("Layout could not be saved"), second, "Enter cancels the confirmation");
+            Assert.False(second.HasExited);
+            second.Write("\u001b[21~");
+            await WaitUntil(() => second.Screen.GetText().Contains("Layout could not be saved"), second, "concurrent layout choice again");
+            // Alt+O 明确选择 Confirm。
+            second.Write("\u001bo");
             await WaitUntil(() => second.HasExited, second, "detach without overwriting layout");
             Assert.Equal(0, second.ExitCode);
             Assert.True(new CrewTerm.Core.Settings.WorkspaceSettingsStore(state).Load().SplitTerminals);

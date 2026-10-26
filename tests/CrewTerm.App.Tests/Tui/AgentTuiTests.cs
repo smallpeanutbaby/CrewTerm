@@ -14,7 +14,8 @@ namespace CrewTerm.App.Tests.Tui;
 public sealed class AgentTuiTests
 {
     /// <summary>
-    /// 验证协作菜单：<c>Agent: Send message</c> 从当前选中的 Sender 向 Receiver 投递一条未确认消息；对方回复后，<c>Agent: Inbox</c> 能打开并显示回复，按 Esc 关闭时将其标记为已确认；
+    /// 验证协作菜单：<c>Agent: Send message</c> 从当前选中的 Sender 向 Receiver 投递一条未确认消息；对方回复后，<c>Agent: Inbox</c> 能打开并显示回复，按 Esc 关闭时将其标记为已确认，
+    /// 再次打开这条已确认的消息只显示全文，不会因重复确认而报错；
     /// <c>Agent: Handoff prompt</c> 把提示词作为真实输入写入接收方终端；<c>Agent: Wait for selected state</c> 在后台等待，外部上报 <c>done</c> 后显示等待结果和原因。
     /// </summary>
     [Fact]
@@ -51,6 +52,13 @@ public sealed class AgentTuiTests
             ui.Write("\u001b");
             await Wait(() => ui.Screen.GetText().Contains("Message marked read"), ui, "acknowledged reply");
             Assert.True(Assert.Single((await client.CallAsync(new("message-list", a.SessionId))).Messages!).Acknowledged);
+            await Command(ui, "Agent: Inbox");
+            await Wait(() => ui.Screen.GetText().Contains("INBOX"), ui, "inbox list again");
+            ui.Write("\r");
+            await Wait(() => ui.Screen.GetText().Contains("INBOX MESSAGE"), ui, "reread acknowledged reply");
+            ui.Write("\u001b");
+            await Wait(() => ui.Screen.GetText().Contains("Message already read"), ui, "rereading does not acknowledge twice");
+            Assert.DoesNotContain("already acknowledged", ui.Screen.GetText());
             await Command(ui, "Agent: Handoff prompt");
             await Wait(() => ui.Screen.GetText().Contains("Choose recipient"), ui, "handoff recipient");
             ui.Write("\r");
@@ -111,7 +119,7 @@ public sealed class AgentTuiTests
 
     /// <summary>
     /// 验证：A 上报 <c>Done</c>、B 上报 <c>Blocked</c> 后侧栏同时显示 <c>[WAIT]</c> 与 <c>[DONE*]</c>，且 <c>[WAIT]</c> 排在前面；
-    /// 在 <c>Agent: Notifications</c> 列表中筛选并打开 Review B 只把 B 的通知标为已读，A 的通知仍未读；
+    /// 在 <c>Agent: Notifications</c> 列表中筛选并打开 Review B 只把 B 的通知标为已读，A 的通知仍未读；再次打开这条已读通知只切换会话、不会报错；
     /// B 再次上报完成后界面显示新通知，<c>Agent: Mark selected as read</c> 使 B 的状态变为 <see cref="AgentActivityState.Idle"/>。
     /// </summary>
     [Fact]
@@ -138,11 +146,53 @@ public sealed class AgentTuiTests
             var notices = (await client.CallAsync(new("notifications"))).Notifications!;
             Assert.All(notices.Where(n => n.SessionId == b.SessionId), n => Assert.True(n.Read));
             Assert.Contains(notices, n => n.SessionId == a.SessionId && !n.Read);
+            await Command(ui, "Agent: Notifications");
+            await Wait(() => ui.Screen.GetText().Contains("NOTIFICATIONS"), ui, "notification list again");
+            ui.Write("Approve review"); await Task.Delay(200); ui.Write("\r");
+            await Wait(() => ui.Screen.GetText().Contains("already read"), ui, "read notification reopens without error");
+            Assert.DoesNotContain("Notification not found", ui.Screen.GetText());
             await client.CallAsync(new("agent-report", b.SessionId, State: AgentActivityState.Done, Source: "api", Reason: "Review finished"));
             await Wait(() => ui.Screen.GetText().Contains("Review finished"), ui, "new completion notification");
             await Command(ui, "Agent: Mark selected as read");
             await Wait(() => ui.Screen.GetText().Contains("Marked as read"), ui, "explicit seen state");
             Assert.Equal(AgentActivityState.Idle, (await client.CallAsync(new("agent-state", b.SessionId))).Activity!.State);
+            ui.Write("\u001b[21~"); await Wait(() => ui.HasExited, ui, "detach");
+        }
+        finally
+        {
+            try { await client.CallAsync(new("stop")); }
+            catch (Exception e) when (e is IOException or TimeoutException or OperationCanceledException) { }
+            await TestStateDirectory.DeleteAsync(state);
+        }
+    }
+
+    /// <summary>
+    /// 验证：<c>Terminal: View / search scrollback</c> 打开的查看器中按 Ctrl+F 弹出查找框（标题 <c>Find in text</c>），
+    /// 输入文本回车后查找框关闭、查看器仍然打开；Esc 关闭查看器后工作区可以正常分离。
+    /// </summary>
+    [Fact]
+    public async Task ScrollbackViewerCtrlFOpensFind()
+    {
+        var root = CrewTermBuild.Repository;
+        var state = Path.Combine(Path.GetTempPath(), "CrewTermAgentUi", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(state);
+        var client = new DaemonClient(state);
+        try
+        {
+            using var ui = Launch("scrollback-find-ui", root, state);
+            await Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
+            var shell = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "History"));
+            await Wait(() => ui.Screen.GetText().Contains("History  ·"), ui, "history session selected");
+            await client.CallAsync(new("input", shell.SessionId, Text: "echo SCROLL_MARKER\r"));
+            await WaitForText(client, shell.SessionId!, "SCROLL_MARKER", ui);
+            await Command(ui, "Terminal: View / search scrollback");
+            await Wait(() => ui.Screen.GetText().Contains("SCROLLBACK"), ui, "scrollback viewer");
+            ui.Write("\u0006");
+            await Wait(() => ui.Screen.GetText().Contains("Find in text"), ui, "Ctrl+F find prompt");
+            ui.Write("SCROLL_MARKER\r");
+            await Wait(() => !ui.Screen.GetText().Contains("Find in text") && ui.Screen.GetText().Contains("SCROLLBACK"), ui, "find closes back to the viewer");
+            ui.Write("\u001b");
+            await Wait(() => !ui.Screen.GetText().Contains("SCROLLBACK"), ui, "viewer closed");
             ui.Write("\u001b[21~"); await Wait(() => ui.HasExited, ui, "detach");
         }
         finally

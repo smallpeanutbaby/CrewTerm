@@ -98,10 +98,12 @@ Provider 来自 `crewterm new --provider`，或从程序文件名识别（`claud
 [Agent 集成指南](agent-integration.md)。Claude Code 的回调命令自带 `--state-dir`、`--provider claude`、`--id` 参数；Codex 的 `notify`
 只带 `agent-hook --provider codex`，状态目录与会话 ID 取自 Codex 进程继承的 `CREWTERM_STATE_DIR`、`CREWTERM_SESSION_ID`。
 
-**后台任务**（`TaskRunner`）继承后台服务的环境，标准输入已关闭，不设置 `TERM` 等终端变量，也不设置 `NoDefaultCurrentDirectoryInExePath`。
+**后台任务**（`TaskRunner`）继承后台服务的环境，标准输入已关闭，不设置 `TERM` 等终端变量；Windows 上与终端会话一样设置
+`NoDefaultCurrentDirectoryInExePath=1`。
 Windows 上命令经 `cmd.exe` 执行：先 `chcp 65001` 切换到 UTF-8，再通过一个名为 `CREWTERM_TASK_COMMAND_<32 位十六进制>` 的变量
 把命令原样交给内层 cmd；Linux / macOS 上经 `/bin/sh -c` 执行，不添加变量。任务命令中的程序由 cmd 或 `/bin/sh` 按它们自己的规则查找，
-不经过下文[可执行文件的查找规则](#可执行文件的查找规则)；Windows 上的 cmd 因此仍会先在当前目录（项目目录）中查找程序。
+不经过下文[可执行文件的查找规则](#可执行文件的查找规则)；因为设置了上述变量，Windows 上的 cmd 不在当前目录（项目目录）中查找裸程序名，
+项目内的脚本要写成 `.\build.cmd`。
 
 **插件进程**（`LocalPluginRunner`）继承后台服务的环境，不添加也不删除任何变量；输入通过标准输入的 JSON 传递，
 见 [本地插件](local-plugins.md)。
@@ -123,11 +125,9 @@ Windows 上命令经 `cmd.exe` 执行：先 `chcp 65001` 切换到 UTF-8，再�
 
 - `--state-dir PATH` 指定其他目录。相对路径按每条命令执行时的当前目录解析，在不同目录中执行会指向不同的工作台；脚本中请使用绝对路径。
   Windows 上大小写不同或带末尾分隔符的同一路径对应同一个后台服务。
-- 目录不存在时，由客户端在启动后台服务之前、以及后台服务在启动时创建：Linux / macOS 上权限为 `0700`，
+- 目录不存在时，由第一个用到它的入口创建（客户端在启动后台服务之前、后台服务启动时、`doctor`、工作台保存设置时）：Linux / macOS 上权限为 `0700`，
   Windows 上继承上级目录的权限（默认位置受用户配置文件目录的 ACL 保护）。已存在的目录保持原有权限，CrewTerm 不会修改；
   `checkpoints/`、`provider-hooks/` 等子目录按系统默认权限创建，由上级目录保护。
-- `crewterm doctor` 不经过上述步骤：目录不存在时它按系统默认权限（umask）创建目录。在 Linux / macOS 上第一次使用新的
-  `--state-dir` 时，先打开工作台或运行一条连接后台服务的子命令，或者自己用 `mkdir -m 700` 创建。
 - 状态目录不能位于要创建检查点的项目内部，否则创建检查点时报 `Checkpoint storage must be outside the selected project.`。
 - 客户端与后台服务之间的连接只允许当前用户：Windows 使用命名管道 `CrewTerm-<用户名>-<路径哈希>`，不在目录中产生文件；
   Linux / macOS 使用状态目录中的 Unix 域套接字 `server.sock`，路径的 UTF-8 长度超过 100 字节时改用系统临时目录中以 `crewterm-`
@@ -314,7 +314,7 @@ JSON 状态文件的共同规则：
 
 CrewTerm 在两个地方查找程序，规则相近但不完全相同。
 
-**发现**（F3 列表与 `doctor`，`ExecutableLocator`）：
+**发现**（F3 列表、`doctor` 与 CrewTerm 调用的 Git，`ExecutableLocator`；Git 在 Windows 上只接受 `git.exe`）：
 
 1. 名称含目录分隔符或是绝对路径时，只检查这一个位置；相对路径按工作台（或 `doctor`）进程的当前目录解析。
 2. 否则依次检查 `PATH` 的每个条目：去掉首尾空白与引号后只使用完整的绝对路径，`.` 等相对条目与空条目被忽略，

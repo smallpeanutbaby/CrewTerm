@@ -115,7 +115,7 @@
 | 滚轮 | 滚动 |
 
 - F3 被工作台占用（新建 Agent），查找下一处请再次执行 `Editor: Find text`。
-- Ctrl+F、Ctrl+H 在编辑器中不会打开查找或替换框；查找用 `Editor: Find text`，跳转行用 `Editor: Go to line`。
+- Ctrl+F 与 `Editor: Find text` 打开同一个查找框；Ctrl+H 不会打开替换框；跳转行用 `Editor: Go to line`。
 - F5 保存；Esc 会请求退出工作台（见第 1 节；多光标编辑时先收回为单个光标）。
 
 ### 2.4 项目、Agent 与文件列表
@@ -142,9 +142,9 @@
 | --- | --- |
 | 输入框 | Enter 确认（`OK`）；Esc 取消；Ctrl+A 全选输入框中的文字 |
 | 选择器（含命令面板） | 直接输入文字过滤（不区分大小写的子串匹配）；↓ 从过滤框进入列表；Enter 或 `Select` 选择；Esc 或 `Cancel` 取消 |
-| 确认框（`Cancel` / `Confirm`） | **Enter 选择默认按钮 `Confirm`**；Esc 取消 |
+| 确认框（`Confirm` / `Cancel`） | Alt+O 或点击 `Confirm` 确认；**Enter 选择默认按钮 `Cancel`**；Esc 或 Alt+C 取消 |
 | `Unsaved changes`（`Save` / `Discard` / `Cancel`） | Alt+S 保存、Alt+D 放弃、Alt+C 取消；Enter 选择默认按钮 `Cancel`；Esc 取消 |
-| 文本查看器（帮助、diff、历史、输出） | 方向键、PageUp / PageDown、Ctrl+Home / Ctrl+End 移动；Shift+方向键选择；Ctrl+C 复制；Esc 或 `Close` 关闭 |
+| 文本查看器（帮助、diff、历史、输出） | 方向键、PageUp / PageDown、Ctrl+Home / Ctrl+End 移动；Shift+方向键选择；Ctrl+C 复制；Ctrl+F 查找；Esc 或 `Close` 关闭 |
 | 任务输出 `TASK OUTPUT` | `Cancel task` 取消任务；`Close (keep running)` 或 Esc 只关闭窗口 |
 | 错误消息框 `CrewTerm` | Enter 或 `OK` 关闭 |
 

@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using CrewTerm.Core.IO;
 
 namespace CrewTerm.Core.Tests.IO;
@@ -82,6 +83,36 @@ public sealed class AtomicJsonStoreTests : IDisposable
         var driveRoot = Path.GetPathRoot(root)!;
         Assert.Equal(driveRoot, FileSystemPath.Normalize(driveRoot));
         if (OperatingSystem.IsWindows()) Assert.True(FileSystemPath.AreSame(directory.ToUpperInvariant(), directory));
+    }
+
+    /// <summary>
+    /// 验证（Linux / macOS）：保存状态文件时如果状态目录还不存在，新建的目录只允许当前用户访问（<c>0700</c>）——
+    /// 工作台第一次写入 <c>projects.json</c> 等文件时可能比其他入口更早创建状态目录。
+    /// </summary>
+    [UnixFact]
+    [UnsupportedOSPlatform("windows")]
+    public void SaveCreatesPrivateStateDirectoryOnUnix()
+    {
+        var state = Path.Combine(root, "new state");
+        AtomicJsonStore.Save(StateFiles.PathOf(state, StateFiles.Projects), new List<int> { 1 });
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(state));
+    }
+
+    /// <summary>
+    /// 验证（Linux / macOS）：<see cref="FileSystemPath.ResolveLinks(string)"/> 把经过目录符号链接的路径解析到真实位置，尚不存在的末尾部分原样保留，
+    /// 因此 <see cref="FileSystemPath.AreSameLocation"/> 认为链接路径与真实路径是同一位置，而纯文本比较 <see cref="FileSystemPath.AreSame"/> 不认为。
+    /// </summary>
+    [UnixFact]
+    [UnsupportedOSPlatform("windows")]
+    public void ResolveLinksFollowsDirectorySymlinks()
+    {
+        var real = Directory.CreateDirectory(Path.Combine(root, "real")).FullName;
+        var link = Path.Combine(root, "link");
+        Directory.CreateSymbolicLink(link, real);
+        var expected = Path.Combine(FileSystemPath.ResolveLinks(real), "child", "missing");
+        Assert.Equal(expected, FileSystemPath.ResolveLinks(Path.Combine(link, "child", "missing") + Path.DirectorySeparatorChar));
+        Assert.True(FileSystemPath.AreSameLocation(link, real));
+        Assert.False(FileSystemPath.AreSame(FileSystemPath.Normalize(link), FileSystemPath.Normalize(real)));
     }
 
     /// <summary>

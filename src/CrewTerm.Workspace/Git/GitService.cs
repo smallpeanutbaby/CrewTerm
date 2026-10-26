@@ -14,6 +14,7 @@ namespace CrewTerm.Workspace.Git;
 /// <item><description>始终使用 <c>--literal-pathspecs</c>，文件名中的 <c>*</c>、<c>[</c> 等不会被当作通配符。</description></item>
 /// <item><description>不执行任何破坏性操作：不删除分支、不强制删除脏 worktree、不 reset、不 push。</description></item>
 /// <item><description>每条命令最长 60 秒，超时或取消时结束整个 Git 进程树。</description></item>
+/// <item><description>Git 由 <see cref="ExecutableLocator"/> 在 PATH 的绝对路径条目中解析后以绝对路径启动，从不使用当前目录或项目目录中的同名程序。</description></item>
 /// </list>
 /// </remarks>
 public sealed class GitService
@@ -22,6 +23,19 @@ public sealed class GitService
     /// 单条 Git 命令的最长运行时间（60 秒）；超时后结束 Git 进程树并抛出 <see cref="OperationCanceledException"/>。
     /// </summary>
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// 查找 Git 时代替 <c>PATH</c> 环境变量的搜索路径；为 <see langword="null"/> 时使用 <c>PATH</c>。
+    /// </summary>
+    private readonly string? searchPath;
+
+    /// <summary>
+    /// 创建 Git 服务。
+    /// </summary>
+    /// <param name="searchPath">
+    /// 查找 Git 时代替 <c>PATH</c> 环境变量的搜索路径，主要用于测试；为 <see langword="null"/> 时使用 <c>PATH</c>。
+    /// </param>
+    public GitService(string? searchPath = null) => this.searchPath = searchPath;
 
     /// <summary>
     /// 获取包含指定目录的仓库根目录。
@@ -41,7 +55,11 @@ public sealed class GitService
     public async Task<IReadOnlyList<GitChange>> GetChangesAsync(string root, CancellationToken cancellationToken = default)
     {
         root = WorkspacePath.Root(root);
-        var repository = await GetRepositoryRootAsync(root, cancellationToken);
+        // 用 Git 自己报告的仓库根目录与项目前缀拼出项目目录，再计算相对路径：Git 输出的是解析符号链接后的真实路径
+        // （macOS 上 /var/... 会变成 /private/var/...），与调用方给出的写法比较会得到 ../ 开头的错误相对路径。
+        var location = (await Run(root, ["rev-parse", "--show-toplevel", "--show-prefix"], cancellationToken)).Output.Split('\n');
+        var repository = System.IO.Path.GetFullPath(location[0].Trim());
+        var project = FileSystemPath.Normalize(System.IO.Path.Combine(repository, location.Length > 1 ? location[1].Trim() : ""));
         var result = await Run(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."], cancellationToken);
         // -z 格式：每项为 "XY 路径\0"；重命名/复制时紧跟一项 "原路径\0"。路径相对于仓库根目录。
         var tokens = result.Output.Split('\0');
@@ -51,10 +69,10 @@ public sealed class GitService
             var token = tokens[index];
             if (token.Length < 4) continue;
             var status = token[..2];
-            var path = WorkspacePath.Relative(root, System.IO.Path.Combine(repository, token[3..]));
+            var path = WorkspacePath.Relative(project, System.IO.Path.Combine(repository, token[3..]));
             string? original = null;
             if ((status.Contains('R') || status.Contains('C')) && index + 1 < tokens.Length)
-                original = WorkspacePath.Relative(root, System.IO.Path.Combine(repository, tokens[++index]));
+                original = WorkspacePath.Relative(project, System.IO.Path.Combine(repository, tokens[++index]));
             changes.Add(new GitChange(path, status, original));
         }
         return changes;
@@ -133,7 +151,7 @@ public sealed class GitService
     /// <param name="path">新 worktree 目录（不能已存在内容）。</param>
     /// <param name="branch">分支名，必须通过 <c>git check-ref-format --branch</c> 校验。</param>
     /// <param name="cancellationToken">取消操作。</param>
-    /// <returns>新建的 worktree。</returns>
+    /// <returns>新建的 worktree；<see cref="GitWorktree.Path"/> 保留调用方给出的写法（去掉末尾分隔符），而不是 Git 解析符号链接后的路径。</returns>
     public async Task<GitWorktree> CreateWorktreeAsync(string root, string path, string branch, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(branch);
@@ -143,7 +161,9 @@ public sealed class GitService
         var exists = await Run(root, ["show-ref", "--verify", "--quiet", $"refs/heads/{branch}"], cancellationToken, allowDifference: true);
         if (exists.ExitCode == 0) await Run(root, ["worktree", "add", "--", path, branch], cancellationToken);
         else await Run(root, ["worktree", "add", "-b", branch, "--", path, "HEAD"], cancellationToken);
-        return (await ListWorktreesAsync(root, cancellationToken)).Single(w => FileSystemPath.AreSame(w.Path, path));
+        // Git 列出的是解析符号链接后的路径；按真实位置匹配，返回时保留调用方给出的写法。
+        var created = (await ListWorktreesAsync(root, cancellationToken)).Single(w => FileSystemPath.AreSameLocation(w.Path, path));
+        return created with { Path = path };
     }
 
     /// <summary>
@@ -157,7 +177,7 @@ public sealed class GitService
     {
         var fullPath = FileSystemPath.Normalize(path);
         var worktrees = await ListWorktreesAsync(root, cancellationToken);
-        if (!worktrees.Any(worktree => FileSystemPath.AreSame(worktree.Path, fullPath)))
+        if (!worktrees.Any(worktree => FileSystemPath.AreSameLocation(worktree.Path, fullPath)))
             throw new GitOperationException("The selected path is not a worktree of this repository.");
         // 不传 --force：脏 worktree 由 Git 拒绝删除，保护用户与 Agent 的未提交工作。
         await Run(root, ["worktree", "remove", "--", fullPath], cancellationToken);
@@ -171,13 +191,18 @@ public sealed class GitService
     /// <param name="cancellationToken">取消操作。</param>
     /// <param name="allowDifference">把退出码 1 视为成功（<c>diff --no-index</c>、<c>show-ref</c> 等）。</param>
     /// <returns>标准输出的完整文本（UTF-8 解码）与退出码。</returns>
-    /// <exception cref="GitOperationException">无法启动 Git，或 Git 以非零（且不被允许的）退出码结束；消息包含标准错误输出。</exception>
+    /// <exception cref="GitOperationException">PATH 中找不到 Git、无法启动 Git，或 Git 以非零（且不被允许的）退出码结束；消息包含标准错误输出。</exception>
     /// <exception cref="OperationCanceledException">调用方取消或超过 <see cref="CommandTimeout"/>；此时 Git 进程树已被结束。</exception>
-    private static async Task<GitResult> Run(string root, IEnumerable<string> arguments, CancellationToken cancellationToken, bool allowDifference = false)
+    private async Task<GitResult> Run(string root, IEnumerable<string> arguments, CancellationToken cancellationToken, bool allowDifference = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         root = WorkspacePath.Root(root);
-        var start = new ProcessStartInfo("git")
+        // 先解析出绝对路径再启动：把裸程序名交给系统时，Windows 的 CreateProcess 与 .NET 在 Unix 上的解析都会先查找
+        // 本进程的当前目录，在不受信任的仓库中启动 CrewTerm 时就会执行仓库里的同名程序。
+        // Windows 上只接受 git.exe：.cmd / .bat 会让 cmd.exe 重新解析参数，文件名中的 &、^ 等字符可能被当作命令。
+        var executable = ExecutableLocator.Find(OperatingSystem.IsWindows() ? "git.exe" : "git", searchPath)
+            ?? throw new GitOperationException("Cannot find Git on PATH. Install Git and add it to PATH.");
+        var start = new ProcessStartInfo(executable)
         {
             WorkingDirectory = root, UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true,

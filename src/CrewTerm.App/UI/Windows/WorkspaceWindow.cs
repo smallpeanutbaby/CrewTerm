@@ -308,6 +308,8 @@ public sealed partial class WorkspaceWindow : Window
             });
         };
         editor.View.ModifiedChanged += (_, _) => UpdateEditorTitle();
+        // 编辑器控件对 Ctrl+F 只发出事件，不自带查找框；与命令面板的 Editor: Find text 使用同一个查找框。
+        editor.View.FindRequested += (_, _) => Guard(() => Dialogs.Find(application, editor.View, "Find in file"));
         if (options.Get("project") is string selected)
         {
             var project = projects.Add(selected); projects.Save(); settings.LastProjectId = project.Id;
