@@ -157,7 +157,7 @@ public sealed partial class WorkspaceWindow
         if (index < 0) return;
         var plugin = plugins[index];
         Dialogs.Text(application, "PLUGIN MANIFEST · " + plugin.Name,
-            $"Source: {plugin.SourceDirectory}\nEnabled: {plugin.Enabled}\nCommands run as your Windows user, without a sandbox.\n\n" +
+            $"Source: {plugin.SourceDirectory}\nEnabled: {plugin.Enabled}\nCommands run as your user account, without a sandbox.\n\n" +
             JsonSerializer.Serialize(plugin.Manifest, new JsonSerializerOptions { WriteIndented = true }));
     }
 

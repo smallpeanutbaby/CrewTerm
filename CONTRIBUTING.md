@@ -1,10 +1,11 @@
 # 贡献指南
 
-感谢你愿意改进 CrewTerm。本文说明开发环境、工程规范与提交要求。
+感谢你愿意改进 CrewTerm。本文说明开发环境、工程规范与提交要求；构建、调试、测试体系与常见改动的完整步骤见
+[开发者指南](docs/development.md)。参与本项目即表示你同意遵守 [行为准则](CODE_OF_CONDUCT.md)。
 
 ## 报告问题
 
-- 先在 [Issues](https://github.com/smallpeanutbaby/CrewTerm/issues) 中搜索是否已有相同问题。
+- 先在 [Issues](https://github.com/smallpeanutbaby/CrewTerm/issues) 中搜索是否已有相同问题，再使用“问题报告”或“功能建议”模板提交。
 - 请附上：操作系统与版本、终端程序、`crewterm --version` 的输出、重现步骤、期望结果与实际结果；
   后台服务的问题请附上状态目录中 `server-error.log` 的相关内容（先删除其中的敏感信息）。
 - 安全问题请不要公开提交，按 [安全策略](SECURITY.md) 私下报告。

@@ -763,7 +763,7 @@ public sealed partial class WorkspaceWindow : Window
     /// </summary>
     private void ShowHelp() => Dialogs.Text(application, "SHORTCUTS · CrewTerm",
         (serverCompatibilityWarning is null ? "" : serverCompatibilityWarning + "\n\n") + CrewTermHelp.Text +
-        "\n\nEnter selects an item. F9 opens the searchable command palette.\nUse Alt+1/2/3/4/5 to move focus between terminals, editor, files and agents.\nThe embedded CLI receives ordinary keys, Ctrl+C, Esc and Tab.\nUse F9 → Send key for function keys reserved by CrewTerm.\nFile saves detect external changes made by agents and refuse to overwrite them.");
+        "\n\nEnter selects an item. F9 opens the searchable command palette.\nUse Alt+1/2/3/4/5 to move focus between terminals, editor, files and agents.\nThe embedded CLI receives ordinary keys, Ctrl+C, Esc and Tab.\nUse F9 → Terminal: Send reserved key for function keys reserved by CrewTerm.\nFile saves detect external changes made by agents and refuse to overwrite them.");
 
     /// <summary>
     /// 请求分离工作台（F10）：窗口停止运行，所有会话继续在 daemon 中运行。

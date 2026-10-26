@@ -41,7 +41,7 @@
 | 持久原生会话目录 | `sessions --all true`；保存 provider、原生 ID、命令与工作目录，保留休眠记录 | 多实例目录、重启、并发写入、新记录不覆盖旧记录已测；[Provider 证据](verification-v02-provider-plugins.md)、[daemon 证据](verification-v02-agent.md) |
 | 精确恢复 | `session-bind`、`session-resume`；F9 → `Agent: Bind native conversation / resume command` 与 `Resume original conversation` | 真实本地 CLI fixture 经 daemon/ConPTY 收到原 UUID、profile/config 和含空格/`&` 的 cwd；从未以 `--last` 代替缺失 ID |
 | 关闭/重新开始/遗忘 | `close`、`session-restart`、`session-forget` 是独立操作；F9 有对应入口 | 重复恢复不重复启动；忘记后不会被旧快照重新导入；provider 历史文件保留；[Agent 证据](verification-v02-agent.md) |
-| 参数与未知 CLI | 保留已验证的 profile/model/settings/cwd 配置，去掉旧 selector 和初始 prompt；显式恢复命令优先 | 未知选项、可变参数数量、wrapper、复合命令等拒绝自动重建；见 [原生恢复说明](native-sessions.md) |
+| 参数与未知 CLI | 保留已验证的 profile/model/settings/cwd 配置，去掉旧 selector 和初始 prompt；显式恢复命令优先 | 未知选项、可变参数数量、wrapper、复合命令等拒绝自动重建；见 [原生恢复说明](../native-sessions.md) |
 | Claude 自动身份和状态 | 普通新会话预分配 UUID；启动/恢复临时注入调用级 `--settings` command/args hook，stdout 静默，不输出审批决策 | 真实 fixture → 回调程序 → 管道已测；已有 `--settings`、`--bare`、`--safe-mode` 时保留原设置并跳过自动接入。Stop 仍有后台任务/cron 时不宣称 Done；[hook 证据](verification-v02-agent.md) |
 | Codex 自动身份和状态 | 调用级 `notify` 在 turn-complete 到达时登记 `thread-id`，Working 可从提交输入推断 | 保留命令行及用户/profile 的既有 notify，跳过原因显示在 Activity.Reason；启动时不宣称已有 ID；不绕过 hook trust；内部切到另一已绑定 thread 时需明确重新 bind，防止旧回调误绑定；[hook 证据](verification-v02-agent.md) |
 | 回调生命周期 | 只连接既有 daemon，有限等待；临时设置不写入原始恢复模板 | 已有不同原生 ID 时忽略非 SessionStart 的不匹配事件；不改全局认证/设置；[hook 证据](verification-v02-agent.md) |
@@ -55,8 +55,8 @@
 | --- | --- | --- |
 | 本地插件目录 | `plugins / plugin-install / plugin-enable / plugin-remove`；F9 → `Plugins:*` | 安装默认停用，展示源目录和 manifest；移除注册不删除源文件；[插件证据](verification-v02-provider-plugins.md) |
 | 命令与自动事件 | F9 显示启用命令；`plugin-run / plugin-event / plugin-history`；自动 created/exited/state/message 事件 | 实际 PowerShell 进程读取 JSON stdin；事件失败不阻止其他插件；[插件协议证据](verification-v02-agent.md) |
-| 执行边界 | 字面参数、工作目录、超时、输出尾部、取消、进程清理、错误结果 | 默认 30 秒/65,536 字符，最高 300 秒/1,048,576 字符；不是安全沙箱；[插件说明](local-plugins.md) |
-| 可运行示例 | [Workspace Notes](../examples/plugins/workspace-notes/README.md)：统计当前项目顶层文件、记录事件 JSON | 测试复制实际示例并启动真实进程；兼容 CLI workingDirectory 与 UI projectRoot；使用系统自带的 Windows PowerShell，无需另装运行时 |
+| 执行边界 | 字面参数、工作目录、超时、输出尾部、取消、进程清理、错误结果 | 默认 30 秒/65,536 字符，最高 300 秒/1,048,576 字符；不是安全沙箱；[插件说明](../local-plugins.md) |
+| 可运行示例 | [Workspace Notes](../../examples/plugins/workspace-notes/README.md)：统计当前项目顶层文件、记录事件 JSON | 测试复制实际示例并启动真实进程；兼容 CLI workingDirectory 与 UI projectRoot；使用系统自带的 Windows PowerShell，无需另装运行时 |
 | Detach / 重连 | F10 离开界面后 daemon 继续持有会话与后台任务；同一状态目录重连 | 真实 TUI 与输入队列排空测试；关闭界面不等于 stop；[App 证据](verification-app.md)、[布局证据](verification-v02-layout.md) |
 | 旧 daemon 兼容 | 启动握手显示版本/协议差异，保护现有工作；新增功能需要新版服务 | 版本协议测试已测；**不会自动停止或升级旧服务**。用户须先完成/保存工作，明确 `stop` 并等待退出，再启动新版；可用独立 state-dir 并行试用 |
 | 范围排除 | 插件市场、多平台客户端、多端同步、多机器 daemon 管理、远端文件系统 | 本轮未实现；本地自定义命令可运行用户已安装的程序，不因此提供远程管理功能 |

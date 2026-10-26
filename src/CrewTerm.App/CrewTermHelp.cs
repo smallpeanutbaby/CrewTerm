@@ -9,7 +9,7 @@ internal static class CrewTermHelp
     /// 命令行用法、快捷键与会话生命周期说明。
     /// </summary>
     internal static readonly string Text = $"""
-        CrewTerm {CrewTermVersion.Current} — multi-agent terminal workspace (Windows / C#)
+        CrewTerm {CrewTermVersion.Current} — multi-agent terminal workspace (Windows / Linux / macOS)
 
         crewterm [--project PATH] [--state-dir PATH]     Open workspace
         crewterm doctor                                Discover installed agent CLIs

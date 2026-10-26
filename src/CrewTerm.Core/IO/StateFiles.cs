@@ -39,7 +39,8 @@ public static class StateFiles
     public const string TaskHistory = "task-history.json";
 
     /// <summary>
-    /// daemon 记录的终端会话启动信息，供“重新启动已保存会话”使用。
+    /// daemon 在会话变化时写入的实时会话列表（旧版本的会话记录格式）；
+    /// 只在 <see cref="NativeSessions"/> 尚不存在时被读取一次，用于迁移到原生会话目录。
     /// </summary>
     public const string SavedSessions = "saved-sessions.json";
 

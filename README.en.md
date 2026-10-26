@@ -165,8 +165,11 @@ agent state and notifications, inboxes, plugin registrations, task history and f
 
 - **Only the current user can reach the service.** Both Windows named pipes and Unix domain sockets are restricted to the current user,
   and the client verifies the server's identity. On Linux and macOS, a newly created state directory is `0700`.
-- **No hijacking from the project directory.** A bare program name is looked up only in absolute `PATH` entries, never in the
-  working directory, so an untrusted repository cannot shadow `git`, `node` or `ssh`. Run project scripts as `./build.sh` or `.\build.cmd`.
+- **Terminal sessions never run programs from the project directory.** A bare program name at the start of a terminal command is
+  looked up only in absolute `PATH` entries, never in the working directory, and cmd inside a Windows session does not search the
+  current directory either, so an untrusted repository cannot shadow `git`, `node` or `ssh`. Run project scripts as `./build.sh` or
+  `.\build.cmd`. Note that on Windows, background tasks, command templates and pipelines run through `cmd.exe`, which searches the
+  project directory first; use absolute program paths when running tasks in an untrusted repository.
 - **Input cannot escape.** Pasted text, code context and prompts are stripped of `ESC` and other control characters before they reach
   a terminal, so they cannot end a bracketed paste early or inject keystrokes.
 - **Display cannot be injected.** Control characters in session names, messages and plugin names are rejected at the service boundary;
@@ -212,9 +215,22 @@ Run `./scripts/verify.sh` (or `./scripts/verify.ps1`) before submitting changes.
 - Ending a session ends its whole process tree (Windows job object / Unix process group). On Unix, descendants that start their own session (for example with `setsid`) are outside that group.
 - No plugin marketplace, multi-device sync or remote machine management; you can run `ssh` in a terminal, but the file pane and service are local.
 
+## Documentation
+
+The full documentation is written in Chinese and starts at the [documentation home](docs/README.md).
+
+| Area | Documents |
+| --- | --- |
+| Getting started | [Quick start](docs/getting-started.md) · [User guide](docs/user-guide.md) · [Keys and commands](docs/commands.md) · [FAQ](docs/faq.md) · [Glossary](docs/glossary.md) |
+| Agents and automation | [Agent integration](docs/agent-integration.md) · [Multi-agent workflows](docs/workflows.md) · [CLI guide](docs/cli-guide.md) · [Native sessions](docs/native-sessions.md) |
+| Extending and integrating | [Local plugins](docs/local-plugins.md) · [Plugin example](examples/plugins/workspace-notes/README.md) · [Service protocol](docs/protocol.md) · [Configuration and data](docs/configuration.md) |
+| Development | [Developer guide](docs/development.md) · [Architecture](docs/architecture.md) · [Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md) |
+| Project | [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md) · [Verification records](docs/verification/README.md) |
+
 ## Contributing
 
-Issues and pull requests are welcome. Please read the [contributing guide](CONTRIBUTING.md) first.
+Issues and pull requests are welcome. Please read the [contributing guide](CONTRIBUTING.md) and the
+[developer guide](docs/development.md) first. By participating you agree to follow the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## License
 

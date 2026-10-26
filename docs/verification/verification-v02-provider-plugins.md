@@ -26,7 +26,7 @@ claude --version
 claude --help
 ```
 
-Installed versions: `codex-cli 0.163.0`, `Claude Code 2.1.310`. Gemini/OpenCode/Copilot were not installed; their selectors were checked against official documentation and construction tests, not a local CLI invocation. Official links and exact limitations are in [native-sessions.md](native-sessions.md).
+Installed versions: `codex-cli 0.163.0`, `Claude Code 2.1.310`. Gemini/OpenCode/Copilot were not installed; their selectors were checked against official documentation and construction tests, not a local CLI invocation. Official links and exact limitations are in [native-sessions.md](../native-sessions.md).
 
 ## Fork identity and failed stdin regressions
 
@@ -66,7 +66,7 @@ dotnet test tests/CrewTerm.Automation.Tests/CrewTerm.Automation.Tests.csproj --f
 
 RED: the example-directory assertion failed before example production files existed. GREEN: **1/1** after adding the manifest and PowerShell script. The test copies the actual example to a temporary directory, registers it, starts real processes, summarizes real files, and verifies the exact event JSON written by its hook.
 
-A second regression added the real UI `projectRoot` payload. RED: **1 failed, 1 passed**, with `payload.workingDirectory is required`. The script now accepts either field. GREEN: **2/2**. See [Workspace Notes](../examples/plugins/workspace-notes/README.md). Its script requires PowerShell 7; the general plugin runner can execute any declared native program.
+A second regression added the real UI `projectRoot` payload. RED: **1 failed, 1 passed**, with `payload.workingDirectory is required`. The script now accepts either field. GREEN: **2/2**. See [Workspace Notes](../../examples/plugins/workspace-notes/README.md). Its script requires PowerShell 7; the general plugin runner can execute any declared native program.
 
 ## Preserve provider configuration during resume
 

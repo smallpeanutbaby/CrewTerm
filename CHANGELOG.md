@@ -16,12 +16,18 @@
 - `scripts/publish.sh`、`scripts/verify.sh`；`scripts/publish.ps1` 新增 `-Runtime` 参数。
 - 共享测试支持项目 `CrewTerm.Testing`：平台限定的测试特性、按平台选择的测试 Shell 与伪造程序、统一的可执行文件定位。
 - MIT 许可证、贡献指南与安全策略。
+- 完整文档：[文档首页](docs/README.md)、快速入门、使用手册、快捷键与命令参考、Agent 集成指南、多 Agent 工作流实战、
+  配置与数据参考、后台服务协议、开发者指南、常见问题与术语表；本地插件说明扩写为完整的开发指南。
+- 行为准则、Issue 模板（问题报告、功能建议）与拉取请求模板。
 
 ### 变更
 
 - `ConPtySession` 标记为仅 Windows；跨平台代码通过 `ITerminalSession` 使用终端会话。
 - 新建自定义终端的默认命令：Windows 为 `cmd.exe`，Linux / macOS 为 `$SHELL`（未设置时为 `/bin/sh`）。
 - `ExecutableLocator` 在 Linux / macOS 上只接受有执行权限的文件。
+- 各版本的验证记录移到 `docs/verification/`，发布包中的 `docs/` 只包含用户文档。
+- `crewterm --help` 与 F1 帮助的标题列出三个支持的平台；F1 帮助中发送保留键的命令名与命令面板一致；
+  插件清单查看器在 Linux / macOS 上不再提示“Windows 用户”。
 
 ### 安全
 

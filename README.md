@@ -188,8 +188,10 @@ crewterm stop                                         # 停止后台服务及其
 
 - **只允许当前用户连接后台服务**：Windows 命名管道与 Unix 域套接字都限制为当前用户，客户端会校验服务端身份；
   Linux / macOS 上新建的状态目录权限为 `0700`。
-- **不执行项目中的同名程序**：命令开头的裸程序名只在 `PATH` 的绝对路径条目中查找，不会查找工作目录，
-  防止不受信任的仓库劫持 `git`、`node`、`ssh` 等。运行项目内的脚本请写 `.\build.cmd` 或 `./build.sh`。
+- **终端会话不执行项目中的同名程序**：终端会话命令开头的裸程序名只在 `PATH` 的绝对路径条目中查找，不会查找工作目录；
+  Windows 会话中的 cmd 也不从当前目录查找程序，防止不受信任的仓库劫持 `git`、`node`、`ssh` 等。运行项目内的脚本请写
+  `.\build.cmd` 或 `./build.sh`。注意：Windows 上的后台任务、命令模板与流水线经 `cmd.exe` 执行，cmd 会先在项目目录中查找裸程序名，
+  在不受信任的仓库中运行任务时请使用程序的绝对路径。
 - **输入不能逃逸**：粘贴、代码上下文与提示词在写入终端前去掉 `ESC` 等控制字符，无法提前结束 bracketed paste 或注入按键。
 - **显示不能注入**：会话名、消息与插件名称中的控制字符在服务入口被拒绝；命令与插件输出在显示前清理终端转义序列。
 - **插件没有沙箱**：本地插件以你的用户身份运行，安装后默认停用，只安装你信任的插件。
@@ -259,20 +261,20 @@ dotnet test  CrewTerm.slnx -c Release       # 全部测试
 
 ## 文档
 
-| 文档 | 内容 |
-| --- | --- |
-| [架构](docs/architecture.md) | 分层与依赖规则、工程规范、跨平台设计、进程与线程模型、持久化、审查结论 |
-| [CLI 使用说明](docs/cli-guide.md) | 全部命令、参数、退出码与脚本示例 |
-| [原生会话](docs/native-sessions.md) | 原生会话的记录、恢复与重新开始 |
-| [本地插件](docs/local-plugins.md) | 插件清单格式、事件与运行规则 |
-| [插件示例](examples/plugins/workspace-notes/README.md) | 可以直接运行的插件 |
-| [更新日志](CHANGELOG.md) | 各版本的变更 |
+完整文档的入口是 [文档首页](docs/README.md)。
 
-`docs/verification-*.md` 与 `docs/v02-features.md` 是各版本开发过程中的验证记录。
+| 分类 | 文档 |
+| --- | --- |
+| 开始使用 | [快速入门](docs/getting-started.md) · [使用手册](docs/user-guide.md) · [快捷键与命令参考](docs/commands.md) · [常见问题](docs/faq.md) · [术语表](docs/glossary.md) |
+| 多 Agent 与自动化 | [Agent 集成指南](docs/agent-integration.md) · [多 Agent 工作流实战](docs/workflows.md) · [CLI 使用说明](docs/cli-guide.md) · [原生会话](docs/native-sessions.md) |
+| 扩展与集成 | [本地插件](docs/local-plugins.md) · [插件示例](examples/plugins/workspace-notes/README.md) · [后台服务协议](docs/protocol.md) · [配置与数据参考](docs/configuration.md) |
+| 参与开发 | [开发者指南](docs/development.md) · [架构](docs/architecture.md) · [贡献指南](CONTRIBUTING.md) · [行为准则](CODE_OF_CONDUCT.md) |
+| 项目信息 | [更新日志](CHANGELOG.md) · [安全策略](SECURITY.md) · [验证记录](docs/verification/README.md) |
 
 ## 参与贡献
 
-欢迎提交问题与改进。开始之前请阅读 [贡献指南](CONTRIBUTING.md)，了解开发环境、工程规范与提交要求。
+欢迎提交问题与改进。开始之前请阅读 [贡献指南](CONTRIBUTING.md) 与 [开发者指南](docs/development.md)，了解开发环境、工程规范与提交要求。
+参与本项目即表示你同意遵守 [行为准则](CODE_OF_CONDUCT.md)。
 
 ## 许可证
 

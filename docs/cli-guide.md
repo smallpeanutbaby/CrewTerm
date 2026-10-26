@@ -2,7 +2,7 @@
 
 CrewTerm 支持 Windows 10 1809+、Linux 与 macOS。以下示例使用 PowerShell 语法（Windows PowerShell 5.1，或三个平台上的 PowerShell 7），
 假定 `crewterm` 已在 `PATH` 中。在 bash / zsh 中使用时，把 PowerShell 的回车 `` `r `` 写成 `$'\r'`，把 `| ConvertFrom-Json` 换成 `jq` 等工具即可。
-功能验收状态见 [0.2 矩阵](v02-features.md)。
+功能验收状态见 [0.2 矩阵](verification/v02-features.md)。
 
 ## 检查环境
 
@@ -29,7 +29,7 @@ crewterm --state-dir $state --project $project
 
 ## 从旧后台服务切换
 
-0.2 客户端连接到旧 daemon 时，会显示版本/协议提示并保留现有终端。新增 Agent、原生恢复、插件等协议功能需要新版 daemon；程序不会自动停止工作、替换运行中的服务或替你升级 provider。
+新版客户端连接到旧版 daemon 时，会显示版本/协议提示并保留现有终端。新增 Agent、原生恢复、插件等协议功能需要新版 daemon；程序不会自动停止工作、替换运行中的服务或替你升级 provider。
 
 先完成或保存旧实例的工作，再执行：
 
@@ -39,7 +39,7 @@ crewterm --state-dir $state stop
 crewterm --state-dir $state --project $project
 ```
 
-`stop` 会终止这个状态目录下的全部终端与后台任务。想保留旧实例并先试用 0.2，可给新版指定另一个 `--state-dir`；不同目录互不共享实时会话。
+`stop` 会终止这个状态目录下的全部终端与后台任务。想保留旧实例并先试用新版，可给新版指定另一个 `--state-dir`；不同目录互不共享实时会话。
 
 ## 交互式终端会话
 
@@ -149,7 +149,7 @@ crewterm --state-dir $state session-bind $sessionId `
 
 普通 Claude 启动预分配 UUID，受支持启动可用调用级 `--settings` 接入身份和状态 hook。已有 `--settings`、`--bare`、`--safe-mode` 时保留原配置并跳过自动接入。Codex 使用调用级 `notify`，只在 turn 完成时接收 `thread-id`；已有 notify 配置时保留原设置并说明未自动连接。Codex 的 Working 可来自输入已提交的推断，不能冒充 provider 确认。回调不会输出权限决策，不会绕过 hook trust，也不会自行启动 daemon。
 
-`agent-hook` 是由集成生成的被动回调入口：Claude 使用 stdin JSON，Codex 把 JSON 放在最后一个 argv。普通脚本上报使用 `agent-report`。真实 fixture→程序→管道和精确参数恢复有自动测试；尚未通过付费模型回合实测 provider 历史回读，最终回调集成证据见 [矩阵](v02-features.md)。
+`agent-hook` 是由集成生成的被动回调入口：Claude 使用 stdin JSON，Codex 把 JSON 放在最后一个 argv。普通脚本上报使用 `agent-report`。真实 fixture→程序→管道和精确参数恢复有自动测试；尚未通过付费模型回合实测 provider 历史回读，最终回调集成证据见 [矩阵](verification/v02-features.md)。
 
 ## 本地插件
 
@@ -165,6 +165,9 @@ crewterm --state-dir $state plugin-enable crewterm.workspace-notes --enabled fal
 crewterm --state-dir $state plugin-remove crewterm.workspace-notes
 ```
 
+> Windows PowerShell 5.1 与 PowerShell 7.3 之前的版本向原生程序传参时不会转义参数中的双引号，`crewterm` 收到的 JSON 会缺少引号，
+> 报 `--json must be valid JSON`。在这些版本中请写成 `--json ($payload -replace '"', '\"')`；PowerShell 7.3 及以上版本、bash / zsh 不需要。
+
 安装默认停用，也可明确指定 `plugin-install --enabled true`。`plugin-enable ID --enabled false` 用于停用，没有单独的 `plugin-disable` 命令。移除只撤销注册，不删除本地程序、脚本或插件产生的文件。已安装启用的命令出现在界面的 F9 面板；`Plugins: Inspect local manifest` 可以检查实际来源与声明。
 
 ```powershell
@@ -172,9 +175,9 @@ crewterm --state-dir $state plugin-event --event session.created `
     --json '{"sessionId":"example-session"}'
 ```
 
-自动事件为 `session.created`、`session.exited`、`agent.state`、`message.received`。运行和事件通过 JSON stdin 传递，实际命令受 manifest 限定；默认超时 30 秒，可设 1–300 秒；输出默认保留末尾 65,536 字符，最多 1 MiB 字符。进程失败、超时与取消会变成可查看结果，不应让 daemon 崩溃。插件以当前用户权限执行，不是安全沙箱。插件市场和远程安装不在本版范围。
+自动事件为 `session.created`、`session.exited`、`agent.state`、`message.received`。运行和事件通过 JSON stdin 传递，实际命令受 manifest 限定；默认超时 30 秒，可设 1–300 秒；输出默认保留末尾 65,536 个字符，最多 1,048,576 个字符。进程失败、超时与取消会变成可查看结果，不应让 daemon 崩溃。插件以当前用户权限执行，不是安全沙箱。插件市场和远程安装不在本版范围。
 
-成功返回 `Plugin`、`Plugins`、`PluginResult` 或 `PluginResults`。失败时 CLI 写 stderr、返回 1，可用 `plugin-history` 查看留存结果；不要只检查是否有输出。详细 manifest、输入格式、上限和实际示例见 [本地插件说明](local-plugins.md)。
+成功返回 `Plugin`、`Plugins`、`PluginResult` 或 `PluginResults`。失败时 CLI 写 stderr、返回 1，可用 `plugin-history` 查看最近的执行结果（保存在 daemon 内存中，daemon 停止后清空）；不要只检查是否有输出。详细 manifest、输入格式、上限和实际示例见 [本地插件说明](local-plugins.md)。
 
 ## 后台命令任务
 
@@ -250,4 +253,4 @@ daemon 停止时等待任务取消并记录最终结果。重启后可读取已�
 - Agent 状态不明确：查看 `Activity.Source` 和 `Reason`。provider 自动 hook 可能因已有配置被保留而未连接；普通输出不能证明完成。
 - 插件没运行：检查启用状态、manifest 来源、`plugin-history` 中的错误及实际解释器是否在 PATH；示例插件默认使用 PowerShell 7（`pwsh`，Linux / macOS 上需要安装），Windows 上通过 `windows` 替代调用改用系统自带的 Windows PowerShell，无需另装。
 
-基础 CLI 与 Agent/native/plugin 集成测试使用构建后的 `crewterm`、独立临时状态目录、真实 Shell 与伪终端和可控 provider fixture，并在 Windows、Linux 与 macOS 上运行；不会通过付费 AI 提示验证模型历史。来源及最终发布验收见 [功能矩阵](v02-features.md)。
+基础 CLI 与 Agent/native/plugin 集成测试使用构建后的 `crewterm`、独立临时状态目录、真实 Shell 与伪终端和可控 provider fixture，并在 Windows、Linux 与 macOS 上运行；不会通过付费 AI 提示验证模型历史。来源及最终发布验收见 [功能矩阵](verification/v02-features.md)。

@@ -115,7 +115,7 @@ Cli ─┴─► Client ─► Protocol ◄─ Server
   工作目录为程序所在目录；Linux / macOS 上 daemon 启动后再创建新会话并把标准输入输出改接到 `/dev/null`）。UI 每 160 ms 后台轮询会话列表与屏幕（`screen` 请求带 `IncludeText: false`，只取单元格）；
   所有界面更新通过 `application.Invoke` 回到 UI 线程，并用 `SessionRefreshGate` 丢弃用户切换选择之前发起的过期结果。
 - **daemon 进程**：每个状态目录一个（`server.lock` 独占，Unix 上由 `flock` 实现），持有全部伪终端会话、后台任务与插件执行；
-  UI 分离（F10）或退出不影响它。命名管道（Unix 上为临时目录中的 Unix 域套接字）仅允许当前用户，**一次连接一个请求、一行 JSON**，
+  UI 分离（F10）或退出不影响它。命名管道（Unix 上为状态目录中的 Unix 域套接字 `server.sock`，路径过长时改用临时目录）仅允许当前用户，**一次连接一个请求、一行 JSON**，
   最多 16 个并发连接；消息按块读取，请求上限 128 Ki 字符、响应上限 8 Mi 字符。
 - **伪终端会话**：每个会话一个后台读取线程持续读取输出并喂给 `TerminalScreen`；终端查询回复在屏幕锁之外写回，
   避免与 resize 发生锁顺序反转。关闭会话即结束整个进程树（各平台的做法见下表）。
@@ -151,13 +151,14 @@ macOS `~/Library/Application Support/CrewTerm`），由 `StateFiles.EnsureDirect
 
 | 文件 | 写入方 | 并发策略 |
 | --- | --- | --- |
-| `projects.json`、`workspace.json` | UI | 乐观并发：`SaveIfUnchanged`，文件被其他客户端改过则拒绝覆盖 |
+| `projects.json`、`workspace.json` | UI（daemon 启动时读取 `workspace.json` 中的任务并发数） | 乐观并发：`SaveIfUnchanged`，文件被其他客户端改过则拒绝覆盖 |
 | `agent-profiles.json`、`pipeline-templates.json` | UI | 悲观并发：`AtomicJsonStore.Update` 在命名互斥锁内读-改-写 |
-| `task-history.json`、`native-sessions.json`、`local-plugins.json` | daemon（插件登记也可由 CLI） | 同上 |
-| `agent-activity.json`、`saved-sessions.json` | daemon | 单写者（`server.lock` 保证），`AtomicJsonStore.Save` |
+| `task-history.json`、`native-sessions.json`、`local-plugins.json` | daemon（CLI 的 `plugin-*` 子命令也是向 daemon 发请求） | 同上 |
+| `agent-activity.json`、`saved-sessions.json` | daemon | 单写者（`server.lock` 保证），`AtomicJsonStore.Save`；`saved-sessions.json` 只在没有 `native-sessions.json` 时供迁移读取 |
 | `provider-hooks/<会话>.json` | daemon | 每次启动覆盖；`session-forget` 时删除 |
 | `checkpoints/<路径哈希>/` | UI | 每个检查点只写一次（`overwrite: false`） |
 | `server.lock`、`server-error.log` | daemon | 独占锁 / 追加 |
+| `server.sock` | daemon（仅 Linux / macOS） | daemon 的 Unix 域套接字；路径过长时改用临时目录，见 §4 平台差异 |
 
 所有写入都经过 `AtomicFile.WriteAllBytes`：同目录临时文件 → WriteThrough 刷盘 → 可选的提交前检查 → 原子替换
 （目标被杀毒软件或其他读取方短暂占用时有限次重试，最长约 1.3 秒）。状态文件的读取使用 `AtomicFile.ReadAllBytes`，

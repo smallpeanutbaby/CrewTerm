@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 报告安全漏洞
+    url: https://github.com/smallpeanutbaby/CrewTerm/security/advisories/new
+    about: 请通过私密漏洞报告提交，不要公开披露安全问题。
+  - name: 文档与常见问题
+    url: https://github.com/smallpeanutbaby/CrewTerm/blob/main/docs/README.md
+    about: 使用方法、配置、CLI 与插件的完整文档。
