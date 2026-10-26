@@ -1,21 +1,29 @@
 {
   "id": "crewterm.workspace-notes",
   "name": "Workspace Notes",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "commands": [
     {
       "id": "summary",
       "name": "Summarize workspace files",
-      "executable": "powershell",
-      "arguments": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "plugin.ps1", "summarize"],
+      "executable": "pwsh",
+      "arguments": ["-NoProfile", "-NonInteractive", "-File", "plugin.ps1", "summarize"],
+      "windows": {
+        "executable": "powershell",
+        "arguments": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "plugin.ps1", "summarize"]
+      },
       "timeoutSeconds": 10,
       "maxOutputCharacters": 16384
     },
     {
       "id": "record-event",
       "name": "Record a local event note",
-      "executable": "powershell",
-      "arguments": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "plugin.ps1", "record-event"],
+      "executable": "pwsh",
+      "arguments": ["-NoProfile", "-NonInteractive", "-File", "plugin.ps1", "record-event"],
+      "windows": {
+        "executable": "powershell",
+        "arguments": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "plugin.ps1", "record-event"]
+      },
       "timeoutSeconds": 10,
       "maxOutputCharacters": 4096
     }

@@ -72,7 +72,7 @@ public sealed partial class DaemonHost
     /// </summary>
     /// <remarks>
     /// <para>先为 Provider 准备 hook（可能改写命令），并通过环境变量 <c>CREWTERM_SESSION_ID</c>、<c>CREWTERM_STATE_DIR</c>、
-    /// <c>CREWTERM_EXE</c>（与程序集同目录的 <c>crewterm.exe</c>）、<c>CREWTERM_PROVIDER</c> 告诉子进程如何回调。
+    /// <c>CREWTERM_EXE</c>（与程序集同目录的 <c>crewterm</c> 可执行文件）、<c>CREWTERM_PROVIDER</c> 告诉子进程如何回调。
     /// 启动后状态记为 Unknown，订阅输出以识别审批提示，并对初始屏幕做一次识别。</para>
     /// <para>进程启动之后任何一步失败都会回滚：移除并结束终端，把原生记录与活动状态恢复为调用前的值（回滚失败只写日志），
     /// 然后重新抛出原异常。全部成功后发出 <c>session.created</c> 插件事件。调用方必须持有 <see cref="changeLock"/>。</para>
@@ -86,7 +86,7 @@ public sealed partial class DaemonHost
         var previousRecord = nativeSessions.Get(record.Id);
         var previousActivity = agentActivities.List().FirstOrDefault(item => item.SessionId == record.Id);
         var nativeSaved = false;
-        var executable = Path.Combine(Path.GetDirectoryName(typeof(DaemonHost).Assembly.Location)!, "crewterm.exe");
+        var executable = Path.Combine(Path.GetDirectoryName(typeof(DaemonHost).Assembly.Location)!, OperatingSystem.IsWindows() ? "crewterm.exe" : "crewterm");
         var hooks = AgentHookLaunchService.Prepare(stateDirectory, record.Id, executable, plan.Command, plan.Provider);
         var environment = new Dictionary<string, string?>
         {
@@ -95,7 +95,7 @@ public sealed partial class DaemonHost
             ["CREWTERM_EXE"] = executable,
             ["CREWTERM_PROVIDER"] = plan.Provider
         };
-        var terminal = ConPtySession.Start(record.Id, hooks.Command, record.WorkingDirectory, columns, rows, environment);
+        var terminal = TerminalSession.Start(record.Id, hooks.Command, record.WorkingDirectory, columns, rows, environment);
         try
         {
             agentActivities.Register(record.Id);

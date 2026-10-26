@@ -85,6 +85,21 @@ public static class StateFiles
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrewTerm");
 
     /// <summary>
+    /// 确保状态目录存在；Linux / macOS 上新建的目录只允许当前用户访问（<c>0700</c>）。
+    /// </summary>
+    /// <remarks>
+    /// 状态目录中有命令输出、源码检查点与会话记录。Windows 的 <c>%LOCALAPPDATA%</c> 已由用户级 ACL 保护；
+    /// Unix 上按 umask 新建的目录通常是 <c>0755</c>，其他本地用户可以读取，因此显式收紧。已存在的目录保持原有权限。
+    /// </remarks>
+    /// <param name="stateDirectory">状态目录，可以是相对路径。</param>
+    public static void EnsureDirectory(string stateDirectory)
+    {
+        var path = Path.GetFullPath(stateDirectory);
+        if (OperatingSystem.IsWindows()) Directory.CreateDirectory(path);
+        else Directory.CreateDirectory(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    }
+
+    /// <summary>
     /// 组合状态目录与状态文件名，返回绝对路径。
     /// </summary>
     /// <param name="stateDirectory">状态目录，可以是相对路径。</param>

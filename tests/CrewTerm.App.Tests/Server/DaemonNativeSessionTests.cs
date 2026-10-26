@@ -56,7 +56,7 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
     [Fact]
     public async Task CloseKeepsDormantMetadataAndForgetRemovesItsRecord()
     {
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state, Name: "Kept shell"));
+        var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state, Name: "Kept shell"));
         Assert.True(created.Ok, created.Error);
         Assert.True((await Client.CallAsync(new("close", created.SessionId))).Ok);
         Assert.Empty((await Client.CallAsync(new("list"))).Sessions!);
@@ -78,7 +78,7 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
     [Fact]
     public async Task MissingNativeIdentityDoesNotSilentlyRestartAsResume()
     {
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state, Provider: "codex"));
+        var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state, Provider: "codex"));
         Assert.True(created.Ok, created.Error);
         await Client.CallAsync(new("close", created.SessionId));
         var resumed = await Client.CallAsync(new("session-resume", created.SessionId));
@@ -88,15 +88,14 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// 验证：为伪造的 <c>codex.cmd</c> 会话绑定原生标识并重启 daemon 后，该会话在目录中为可恢复的休眠记录且保留原生标识；新建另一个会话不会丢失这条记录（目录共 2 条）；
+    /// 验证：为伪造的 <c>codex</c> 会话绑定原生标识并重启 daemon 后，该会话在目录中为可恢复的休眠记录且保留原生标识；新建另一个会话不会丢失这条记录（目录共 2 条）；
     /// <c>session-resume</c> 复用原会话标识，以 <c>resume &lt;原生标识&gt;</c> 调用提供方命令（脚本把收到的标识写入文件以便核对），恢复后的会话出现在存活列表中。
     /// </summary>
     [Fact]
     public async Task RestartedDaemonResumesExactOriginalNativeIdWithoutLosingOtherRecords()
     {
-        var fixture = Path.Combine(Directory.CreateDirectory(Path.Combine(state, "fixture tools")).FullName, "codex.cmd");
+        var fixture = TestShell.WriteResumeRecorder(Directory.CreateDirectory(Path.Combine(state, "fixture tools")).FullName, "codex", "resumed-id.txt");
         var identityFile = Path.Combine(state, "resumed-id.txt");
-        File.WriteAllText(fixture, "@echo off\r\nif \"%~1\"==\"resume\" (\r\n echo %~2>resumed-id.txt\r\n exit /b 0\r\n)\r\nping -n 60 127.0.0.1 >nul\r\n");
         var created = await Client.CallAsync(new("create", Command: "\"" + fixture + "\"", WorkingDirectory: state, Provider: "codex"));
         Assert.True(created.Ok, created.Error);
         const string nativeId = "871fcb41-2d23-48cb-9f86-e9d03934cfd1";
@@ -107,7 +106,7 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
         Assert.True(dormant.IsDormant);
         Assert.True(dormant.CanResume);
         Assert.Equal(nativeId, dormant.NativeSessionId);
-        var another = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state));
+        var another = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state));
         Assert.True(another.Ok, another.Error);
         Assert.Equal(2, (await Client.CallAsync(new("session-catalog"))).Sessions!.Length);
         var resumed = await Client.CallAsync(new("session-resume", created.SessionId));
@@ -124,7 +123,7 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
     [Fact]
     public async Task ResumeOfRunningSessionReturnsSameIdentityWithoutDuplicateLaunch()
     {
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state));
+        var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state));
         var original = Assert.Single((await Client.CallAsync(new("list"))).Sessions!);
         var resumed = await Client.CallAsync(new("session-resume", created.SessionId));
         Assert.True(resumed.Ok, resumed.Error);
@@ -140,7 +139,7 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
     public async Task ChildReceivesCrewTermIdentityWithoutChangingParentEnvironment()
     {
         var parentValue = Environment.GetEnvironmentVariable("CREWTERM_SESSION_ID");
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /c echo %CREWTERM_SESSION_ID% > session-id.txt", WorkingDirectory: state));
+        var created = await Client.CallAsync(new("create", Command: TestShell.WriteVariable("CREWTERM_SESSION_ID", "session-id.txt"), WorkingDirectory: state));
         Assert.True(created.Ok, created.Error);
         var path = Path.Combine(state, "session-id.txt");
         await WaitForFileAsync(path);
@@ -154,7 +153,7 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
     [Fact]
     public async Task ForgettingExitedSessionIsNotUndoneByLegacyMetadataOnRestart()
     {
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /c exit /b 0", WorkingDirectory: state));
+        var created = await Client.CallAsync(new("create", Command: TestShell.Exit(0), WorkingDirectory: state));
         Assert.True((await Client.CallAsync(new("agent-wait", created.SessionId,
             State: CrewTerm.Automation.Activity.AgentActivityState.Exited, TimeoutMilliseconds: 3000))).Ok);
         Assert.True((await Client.CallAsync(new("session-forget", created.SessionId))).Ok);
@@ -170,7 +169,7 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
     public async Task FailedNativeMetadataWriteCannotBecomeLegacyGhostAfterRestart()
     {
         var nativePath = Directory.CreateDirectory(Path.Combine(state, "native-sessions.json")).FullName;
-        var result = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state));
+        var result = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state));
         Assert.False(result.Ok);
         Assert.Empty((await Client.CallAsync(new("list"))).Sessions!);
         Directory.Delete(nativePath);
@@ -184,8 +183,8 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
     [Fact]
     public async Task SuccessfulLegacySnapshotContainsCurrentProviderMetadata()
     {
-        var result = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state,
-            Provider: "custom", NativeSessionId: "original-42", ResumeCommand: "cmd.exe /d /q"));
+        var result = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state,
+            Provider: "custom", NativeSessionId: "original-42", ResumeCommand: TestShell.Interactive));
         Assert.True(result.Ok, result.Error);
         var saved = Assert.Single(JsonSerializer.Deserialize<SessionInfo[]>(File.ReadAllText(Path.Combine(state, "saved-sessions.json")))!);
         Assert.Equal("custom", saved.Provider);
@@ -198,8 +197,7 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
     [Fact]
     public async Task LegacySnapshotRetainsOriginalCommandWithoutTransientGeneratedHookSettings()
     {
-        var fixture = Path.Combine(Directory.CreateDirectory(Path.Combine(state, "fixture tools")).FullName, "claude.cmd");
-        File.WriteAllText(fixture, "@echo off\r\nping -n 60 127.0.0.1 >nul\r\n");
+        var fixture = TestShell.WriteIdleProgram(Directory.CreateDirectory(Path.Combine(state, "fixture tools")).FullName, "claude");
         var command = "\"" + fixture + "\"";
         var result = await Client.CallAsync(new("create", Command: command, WorkingDirectory: state, Provider: "claude"));
         Assert.True(result.Ok, result.Error);
@@ -214,7 +212,7 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
     [Fact]
     public async Task AuthoritativeNativeCatalogDoesNotReimportStaleLegacyRecords()
     {
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state));
+        var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state));
         var original = Assert.Single((await Client.CallAsync(new("list"))).Sessions!);
         await Client.CallAsync(new("close", created.SessionId));
         await Client.CallAsync(new("session-forget", created.SessionId));
@@ -230,7 +228,7 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
     [Fact]
     public async Task AnotherHostCannotRewriteLiveActivityBeforeAcquiringDaemonLock()
     {
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state));
+        var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state));
         await Client.CallAsync(new("agent-report", created.SessionId, State: CrewTerm.Automation.Activity.AgentActivityState.Working, Reason: "Active work"));
         using var competing = new DaemonHost(state);
         await Assert.ThrowsAsync<IOException>(() => competing.RunAsync());
@@ -240,18 +238,17 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
 
     /// <summary>
     /// 验证：<c>codex</c> 会话的启动命令带有 <c>--profile</c>、含空格的 <c>-c</c> 配置值和含 <c>&amp;</c> 的 <c>--cd</c> 目录时，daemon 重启后 <c>session-resume</c>
-    /// 经 ConPTY 启动的恢复命令把这些参数原样传给提供方（由 PowerShell 脚本把收到的参数记录为 JSON），并附加 <c>resume</c> 与原生会话标识。
+    /// 经伪终端启动的恢复命令把这些参数原样传给提供方（由 PowerShell 脚本把收到的参数记录为 JSON），并附加 <c>resume</c> 与原生会话标识。
     /// </summary>
     [Fact]
-    public async Task ConPtyResumePreservesProfileConfigAndDirectoryWithShellMetacharacters()
+    public async Task TerminalResumePreservesProfileConfigAndDirectoryWithShellMetacharacters()
     {
         var project = Directory.CreateDirectory(Path.Combine(state, "project & folder")).FullName;
         var argsFile = Path.Combine(state, "resumed-args.json");
         var script = Path.Combine(state, "record args.ps1");
         PowerShellFixture.WriteScript(script, "if ($args -contains 'resume') { [IO.File]::WriteAllText('" + argsFile.Replace("'", "''")
             + "', (ConvertTo-Json -InputObject @($args) -Compress)); exit 0 }; Start-Sleep -Seconds 60");
-        var fixture = Path.Combine(Directory.CreateDirectory(Path.Combine(state, "fixture tools")).FullName, "codex.cmd");
-        File.WriteAllText(fixture, "@echo off\r\n" + PowerShellFixture.CommandLine(script) + " %*\r\n");
+        var fixture = TestShell.WriteLauncher(Directory.CreateDirectory(Path.Combine(state, "fixture tools")).FullName, "codex", PowerShellFixture.CommandLine(script));
         var command = "\"" + fixture + "\" --profile work -c \"model_provider=custom backend\" --cd \"" + project + "\"";
         var created = await Client.CallAsync(new("create", Command: command, WorkingDirectory: state, Provider: "codex"));
         Assert.True(created.Ok, created.Error);

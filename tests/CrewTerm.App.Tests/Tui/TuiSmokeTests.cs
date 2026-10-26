@@ -5,7 +5,7 @@ using CrewTerm.Terminal.Pty;
 namespace CrewTerm.App.Tests.Tui;
 
 /// <summary>
-/// 工作区界面的冒烟测试：在伪控制台（ConPTY）中启动真实的 <c>crewterm</c> 可执行文件，连接独立临时状态目录中的真实 daemon，
+/// 工作区界面的冒烟测试：在伪终端中启动真实的 <c>crewterm</c> 可执行文件，连接独立临时状态目录中的真实 daemon，
 /// 覆盖多客户端布局保存冲突、命令面板与新建终端向导、跨项目会话选择的持久化、任务菜单、编辑器保存与未保存保护、分割终端的输入路由，以及帮助窗口与分离。
 /// </summary>
 public sealed class TuiSmokeTests
@@ -17,15 +17,15 @@ public sealed class TuiSmokeTests
     [Fact]
     public async Task ConcurrentLayoutChangeCanDetachWithoutOverwritingOtherClient()
     {
-        var root = FindRepository();
-        var executable = GetExecutable(root);
+        var root = CrewTermBuild.Repository;
+        var executable = CrewTermBuild.Executable;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermTui", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(state);
         try
         {
-            using var first = ConPtySession.Start("layout-first", $"\"{executable}\" --state-dir \"{state}\" --project \"{root}\"", root, 150, 45);
+            using var first = TerminalSession.Start("layout-first", $"\"{executable}\" --state-dir \"{state}\" --project \"{root}\"", root, 150, 45);
             await WaitUntil(() => first.Screen.GetText().Contains("F10 Detach"), first, "first client");
-            using var second = ConPtySession.Start("layout-second", $"\"{executable}\" --state-dir \"{state}\"", root, 150, 45);
+            using var second = TerminalSession.Start("layout-second", $"\"{executable}\" --state-dir \"{state}\"", root, 150, 45);
             await WaitUntil(() => second.Screen.GetText().Contains("F10 Detach"), second, "second client");
             first.Write("\u001b[19~"); await Task.Delay(250); first.Write("\u001b[21~");
             await WaitUntil(() => first.HasExited, first, "first layout saved");
@@ -51,13 +51,13 @@ public sealed class TuiSmokeTests
     [Fact]
     public async Task CommandPaletteFiltersImmediatelyAndNewTerminalWizardStartsRealShell()
     {
-        var root = FindRepository();
-        var executable = GetExecutable(root);
+        var root = CrewTermBuild.Repository;
+        var executable = CrewTermBuild.Executable;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermTui", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(state);
         try
         {
-            using var terminal = ConPtySession.Start("wizard-ui", $"\"{executable}\" --state-dir \"{state}\" --project \"{root}\"", root, 150, 45);
+            using var terminal = TerminalSession.Start("wizard-ui", $"\"{executable}\" --state-dir \"{state}\" --project \"{root}\"", root, 150, 45);
             await WaitUntil(() => terminal.Screen.GetText().Contains("F10 Detach"), terminal, "wizard workspace");
             terminal.Write("\u001b[20~");
             await WaitUntil(() => terminal.Screen.GetText().Contains("Project: Add folder"), terminal, "command palette");
@@ -95,8 +95,8 @@ public sealed class TuiSmokeTests
     [Fact]
     public async Task SelectingSessionInAnotherProjectPersistsMatchingFileWorkspace()
     {
-        var root = FindRepository();
-        var executable = GetExecutable(root);
+        var root = CrewTermBuild.Repository;
+        var executable = CrewTermBuild.Executable;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermTui", Guid.NewGuid().ToString("N"));
         var a = Path.Combine(state, "project-a");
         var b = Path.Combine(state, "project-b");
@@ -107,9 +107,9 @@ public sealed class TuiSmokeTests
         {
             // 外层测试 PTY 的作业对象要保留到清理阶段：释放它会有意杀死所有子孙进程；
             // 而界面进程自行退出时必须保留 daemon。
-            using var terminal = ConPtySession.Start("binding-ui", $"\"{executable}\" --state-dir \"{state}\" --project \"{a}\"", root, 150, 45);
+            using var terminal = TerminalSession.Start("binding-ui", $"\"{executable}\" --state-dir \"{state}\" --project \"{a}\"", root, 150, 45);
                 await WaitUntil(() => terminal.Screen.GetText().Contains("F10 Detach"), terminal, "ready workspace A");
-                var session = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: b, Name: "Agent B"));
+                var session = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: b, Name: "Agent B"));
                 await WaitUntil(() => terminal.Screen.GetText().Contains("Agent B"), terminal, "B session in sidebar");
                 // Alt+5 把焦点移到会话列表后再按 Enter；负载高时焦点切换可能晚于固定延时，未生效就重试。
                 await RetryUntil(terminal, () => { terminal.Write("\u001b5"); return Task.Delay(300).ContinueWith(_ => terminal.Write("\r")); },
@@ -121,11 +121,11 @@ public sealed class TuiSmokeTests
                 var project = new CrewTerm.Core.Projects.ProjectCatalog(state).Projects.Single(p => p.Id == settings.LastProjectId);
                 Assert.Equal(b, project.Path);
                 Assert.Equal(session.SessionId, settings.LastSessionId);
-            using var reconnected = ConPtySession.Start("reconnected", $"\"{executable}\" --state-dir \"{state}\"", root, 150, 45);
+            using var reconnected = TerminalSession.Start("reconnected", $"\"{executable}\" --state-dir \"{state}\"", root, 150, 45);
             await WaitUntil(() => reconnected.Screen.GetText().Contains("ONLY_IN_B.cs") && reconnected.Screen.GetText().Contains("Agent B"), reconnected, "consistent reconnect");
             reconnected.Write("\u001b[21~");
             await WaitUntil(() => reconnected.HasExited, reconnected, "reconnected detach");
-            using var explicitlySelected = ConPtySession.Start("explicit-project", $"\"{executable}\" --state-dir \"{state}\" --project \"{a}\"", root, 150, 45);
+            using var explicitlySelected = TerminalSession.Start("explicit-project", $"\"{executable}\" --state-dir \"{state}\" --project \"{a}\"", root, 150, 45);
             await WaitUntil(() => explicitlySelected.Screen.GetText().Contains("Agent B"), explicitlySelected, "connected server session list");
             await RetryUntil(explicitlySelected, () => { explicitlySelected.Write("\u001b1"); return Task.Delay(300).ContinueWith(_ => explicitlySelected.Write("x")); },
                 () => explicitlySelected.Screen.GetText().Contains("F3 starts a terminal."));
@@ -147,13 +147,13 @@ public sealed class TuiSmokeTests
     [Fact]
     public async Task TaskMenuRunsCommandAndShowsRealOutput()
     {
-        var root = FindRepository();
-        var executable = GetExecutable(root);
+        var root = CrewTermBuild.Repository;
+        var executable = CrewTermBuild.Executable;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermTui", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(state);
         try
         {
-            using var terminal = ConPtySession.Start("task-ui", $"\"{executable}\" --state-dir \"{state}\" --project \"{root}\"", root, 150, 45);
+            using var terminal = TerminalSession.Start("task-ui", $"\"{executable}\" --state-dir \"{state}\" --project \"{root}\"", root, 150, 45);
             await WaitUntil(() => terminal.Screen.GetText().Contains("F10 Detach"), terminal, "task workspace");
             terminal.Write("\u001b[18~");
             await WaitUntil(() => terminal.Screen.GetText().Contains("Run command"), terminal, "task menu");
@@ -183,8 +183,8 @@ public sealed class TuiSmokeTests
     [Fact]
     public async Task FileEditingSavesAndFrameworkQuitCannotDiscardDirtyBuffer()
     {
-        var root = FindRepository();
-        var executable = GetExecutable(root);
+        var root = CrewTermBuild.Repository;
+        var executable = CrewTermBuild.Executable;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermTui", Guid.NewGuid().ToString("N"));
         var project = Path.Combine(state, "project");
         Directory.CreateDirectory(project);
@@ -192,7 +192,7 @@ public sealed class TuiSmokeTests
         File.WriteAllText(file, "// INITIAL_TEXT\n");
         try
         {
-            using var terminal = ConPtySession.Start("editor-ui", $"\"{executable}\" --state-dir \"{state}\" --project \"{project}\"", root, 150, 45);
+            using var terminal = TerminalSession.Start("editor-ui", $"\"{executable}\" --state-dir \"{state}\" --project \"{project}\"", root, 150, 45);
             await WaitUntil(() => terminal.Screen.GetText().Contains("hello.cs"), terminal, "file browser");
             terminal.Write("\u001b4"); await Task.Delay(250); terminal.Write("\r");
             await WaitUntil(() => terminal.Screen.GetText().Contains("INITIAL_TEXT"), terminal, "opened code");
@@ -228,17 +228,17 @@ public sealed class TuiSmokeTests
     [Fact]
     public async Task SplitTerminalsRouteInputIndependentlyAndSurviveDetach()
     {
-        var root = FindRepository();
-        var executable = GetExecutable(root);
+        var root = CrewTermBuild.Repository;
+        var executable = CrewTermBuild.Executable;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermTui", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(state);
         var client = new DaemonClient(state);
         try
         {
-            using var terminal = ConPtySession.Start("split-ui", $"\"{executable}\" --state-dir \"{state}\" --project \"{root}\"", root, 180, 50);
+            using var terminal = TerminalSession.Start("split-ui", $"\"{executable}\" --state-dir \"{state}\" --project \"{root}\"", root, 180, 50);
             await WaitUntil(() => terminal.Screen.GetText().Contains("F10 Detach"), terminal, "ready workspace");
-            var first = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: root, Name: "Agent A"));
-            var second = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: root, Name: "Agent B"));
+            var first = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Agent A"));
+            var second = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Agent B"));
             await client.CallAsync(new("input", first.SessionId, Text: "echo CREW_A_READY\r"));
             await client.CallAsync(new("input", second.SessionId, Text: "echo CREW_B_READY\r"));
             terminal.Write("\u001b[19~"); // F8：分屏
@@ -276,9 +276,9 @@ public sealed class TuiSmokeTests
     /// <param name="client">连接测试 daemon 的客户端。</param>
     /// <param name="id">会话标识。</param>
     /// <param name="expected">期望出现的文本。</param>
-    /// <param name="ui">外层界面的伪控制台会话，仅用于失败时输出诊断屏幕；界面已退出时可为 null。</param>
+    /// <param name="ui">外层界面的伪终端会话，仅用于失败时输出诊断屏幕；界面已退出时可为 null。</param>
     /// <returns>表示等待过程的任务。</returns>
-    private static async Task WaitForSessionText(DaemonClient client, string id, string expected, ConPtySession? ui = null)
+    private static async Task WaitForSessionText(DaemonClient client, string id, string expected, ITerminalSession? ui = null)
     {
         var deadline = DateTime.UtcNow.AddSeconds(15);
         string? text = null;
@@ -297,13 +297,13 @@ public sealed class TuiSmokeTests
     [Fact]
     public async Task RealTerminalShowsWorkspaceHelpAndDetachesCleanly()
     {
-        var root = FindRepository();
-        var executable = GetExecutable(root);
+        var root = CrewTermBuild.Repository;
+        var executable = CrewTermBuild.Executable;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermTui", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(state);
         try
         {
-            using var terminal = ConPtySession.Start("tui-test", $"\"{executable}\" --state-dir \"{state}\" --project \"{root}\"", root, 140, 45);
+            using var terminal = TerminalSession.Start("tui-test", $"\"{executable}\" --state-dir \"{state}\" --project \"{root}\"", root, 140, 45);
             await WaitUntil(() => terminal.Screen.GetText().Contains("CrewTerm"), terminal, "workspace header");
             terminal.Write("\u001bOP");
             await WaitUntil(() => terminal.Screen.GetText().Contains("SHORTCUTS"), terminal, "help window");
@@ -321,39 +321,14 @@ public sealed class TuiSmokeTests
     }
 
     /// <summary>
-    /// 从测试输出目录向上查找包含 <c>CrewTerm.slnx</c> 的仓库根目录。
-    /// </summary>
-    /// <returns>仓库根目录的完整路径。</returns>
-    /// <exception cref="DirectoryNotFoundException">一直查到磁盘根目录仍未找到时抛出。</exception>
-    private static string FindRepository()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "CrewTerm.slnx"))) dir = dir.Parent;
-        return dir?.FullName ?? throw new DirectoryNotFoundException("Source repository not found");
-    }
-
-    /// <summary>
-    /// 确定被测可执行文件：环境变量 <c>CREWTERM_TEST_EXE</c> 非空时取其完整路径；否则按测试程序集的构建配置拼出 <c>src\CrewTerm.App\bin\&lt;配置&gt;\net10.0\crewterm.exe</c>。
-    /// </summary>
-    /// <param name="root">仓库根目录。</param>
-    /// <returns>可执行文件的完整路径。</returns>
-    private static string GetExecutable(string root)
-    {
-        var published = Environment.GetEnvironmentVariable("CREWTERM_TEST_EXE");
-        if (!string.IsNullOrWhiteSpace(published)) return Path.GetFullPath(published);
-        var config = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
-        return Path.Combine(root, "src", "CrewTerm.App", "bin", config, "net10.0", "crewterm.exe");
-    }
-
-    /// <summary>
     /// 每 50 毫秒检查一次条件，最长等待 30 秒（界面进程提前退出也不会中止等待）；最后再检查一次，仍不成立则附上界面屏幕内容使测试失败。
     /// 上限按多个测试程序集并行、CPU 被占满的情况放宽，条件成立时立即返回。
     /// </summary>
     /// <param name="condition">要等待成立的条件。</param>
-    /// <param name="terminal">运行工作区界面的伪控制台会话。</param>
+    /// <param name="terminal">运行工作区界面的伪终端会话。</param>
     /// <param name="behavior">失败信息中描述所等待行为的文字。</param>
     /// <returns>表示等待过程的任务。</returns>
-    private static async Task WaitUntil(Func<bool> condition, ConPtySession terminal, string behavior)
+    private static async Task WaitUntil(Func<bool> condition, ITerminalSession terminal, string behavior)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         while (!condition() && !timeout.IsCancellationRequested) await Task.Delay(50);
@@ -367,11 +342,11 @@ public sealed class TuiSmokeTests
     /// 焦点切换（如 Alt+5）与随后的按键之间只能靠延时衔接；负载高时焦点可能晚于按键生效，按键落到别的控件上。
     /// 重做操作对这些幂等的步骤是安全的。
     /// </remarks>
-    /// <param name="terminal">运行工作区界面的伪控制台会话；进程退出时停止重试。</param>
+    /// <param name="terminal">运行工作区界面的伪终端会话；进程退出时停止重试。</param>
     /// <param name="action">要执行的按键操作。</param>
     /// <param name="succeeded">操作已生效的判断条件。</param>
     /// <returns>表示重试过程的任务。</returns>
-    private static async Task RetryUntil(ConPtySession terminal, Func<Task> action, Func<bool> succeeded)
+    private static async Task RetryUntil(ITerminalSession terminal, Func<Task> action, Func<bool> succeeded)
     {
         for (var attempt = 0; attempt < 3 && !succeeded() && !terminal.HasExited; attempt++)
         {

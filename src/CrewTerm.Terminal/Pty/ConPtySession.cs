@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Text;
 using CrewTerm.Terminal.Emulation;
 using CrewTerm.Terminal.Native;
@@ -17,7 +18,8 @@ namespace CrewTerm.Terminal.Pty;
 /// <item><description>写入、resize、退出状态查询与释放都由同一把锁串行化，可以从任意线程调用。</description></item>
 /// </list>
 /// </remarks>
-public sealed class ConPtySession : IDisposable
+[SupportedOSPlatform("windows")]
+public sealed class ConPtySession : ITerminalSession
 {
     /// <summary>
     /// 输出管道每次读取的字节数。

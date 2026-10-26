@@ -7,7 +7,7 @@ using CrewTerm.Terminal.Pty;
 namespace CrewTerm.App.Tests.Tui;
 
 /// <summary>
-/// 工作区终端布局的端到端测试：在伪控制台（ConPTY）中启动真实的 <c>crewterm</c> 界面并连接独立临时状态目录中的真实 daemon，
+/// 工作区终端布局的端到端测试：在伪终端中启动真实的 <c>crewterm</c> 界面并连接独立临时状态目录中的真实 daemon，
 /// 通过按键与 SGR 鼠标序列驱动 TUI，覆盖右键菜单分割、初始焦点、滚动后回到实时输出、命名标签页与嵌套分割及其分离后的持久化恢复。
 /// 同时提供其他 TUI 测试共用的启动、等待和命令面板辅助方法。
 /// </summary>
@@ -19,7 +19,7 @@ public sealed class LayoutTuiTests
     [Fact]
     public async Task RightClickMenuCanSplitTheEmbeddedTerminal()
     {
-        var root = Repository();
+        var root = CrewTermBuild.Repository;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermLayoutUi", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(state);
         var client = new DaemonClient(state);
@@ -27,7 +27,7 @@ public sealed class LayoutTuiTests
         {
             using var ui = Launch("context-ui", root, state);
             await Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
-            await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: root, Name: "Context shell"));
+            await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Context shell"));
             await Wait(() => ui.Screen.GetText().Contains("Microsoft Windows"), ui, "terminal screen ready");
             ui.Write("\u001b[<2;50;8M\u001b[<2;50;8m");
             await Wait(() => ui.Screen.GetText().Contains("TERMINAL ACTIONS"), ui, "mouse context menu");
@@ -49,7 +49,7 @@ public sealed class LayoutTuiTests
     [Fact]
     public async Task InitialTerminalReceivesTypingWithoutAnExtraFocusShortcut()
     {
-        var root = Repository();
+        var root = CrewTermBuild.Repository;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermLayoutUi", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(state);
         var client = new DaemonClient(state);
@@ -57,7 +57,7 @@ public sealed class LayoutTuiTests
         {
             using var ui = Launch("initial-focus-ui", root, state);
             await Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
-            var created = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: root, Name: "Initial shell"));
+            var created = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Initial shell"));
             await Wait(() => ui.Screen.GetText().Contains("Initial shell  ·"), ui, "initial terminal bound");
             ui.Write("echo INITIAL_FOCUS\r");
             await WaitForText(client, created.SessionId!, "INITIAL_FOCUS", ui);
@@ -77,7 +77,7 @@ public sealed class LayoutTuiTests
     [Fact]
     public async Task TypingAfterScrollReturnsToLiveTerminalOutput()
     {
-        var root = Repository();
+        var root = CrewTermBuild.Repository;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermLayoutUi", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(state);
         var client = new DaemonClient(state);
@@ -85,7 +85,7 @@ public sealed class LayoutTuiTests
         {
             using var ui = Launch("scroll-live-ui", root, state);
             await Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
-            var created = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: root, Name: "Scroll shell"));
+            var created = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Scroll shell"));
             await client.CallAsync(new("input", created.SessionId, Text: "for /l %i in (1,1,80) do @echo HISTORY_LINE_%i\r"));
             await Wait(() => ui.Screen.GetText().Contains("HISTORY_LINE_80"), ui, "history produced");
             ui.Write("\u001b1"); await Task.Delay(200);
@@ -112,7 +112,7 @@ public sealed class LayoutTuiTests
     [Fact]
     public async Task NamedTabsAndNestedPanesRouteInputAndRestoreAfterDetach()
     {
-        var root = Repository();
+        var root = CrewTermBuild.Repository;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermLayoutUi", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(state);
         var client = new DaemonClient(state);
@@ -120,9 +120,9 @@ public sealed class LayoutTuiTests
         {
             using var ui = Launch("layout", root, state);
             await Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
-            var a = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: root, Name: "Pane Alpha"));
-            var b = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: root, Name: "Pane Bravo"));
-            var c = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: root, Name: "Pane Charlie"));
+            var a = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Pane Alpha"));
+            var b = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Pane Bravo"));
+            var c = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Pane Charlie"));
             await Wait(() => ui.Screen.GetText().Contains("Pane Charlie"), ui, "sessions loaded");
             await Command(ui, "Terminal: Split right");
             await Wait(() => ui.Screen.GetText().Contains("2 panes"), ui, "horizontal split");
@@ -133,7 +133,7 @@ public sealed class LayoutTuiTests
             Assert.DoesNotContain("CHARLIE_TARGET", (await client.CallAsync(new("screen", a.SessionId))).Text);
             Assert.DoesNotContain("CHARLIE_TARGET", (await client.CallAsync(new("screen", b.SessionId))).Text);
 
-            // SGR 鼠标事件先经过外层 ConPTY，再交给真实界面的鼠标捕获处理器：在第 6 行按住左键，从第 104 列拖到第 124 列后释放，移动左右面板之间的分隔线。
+            // SGR 鼠标事件先经过外层伪终端，再交给真实界面的鼠标捕获处理器：在第 6 行按住左键，从第 104 列拖到第 124 列后释放，移动左右面板之间的分隔线。
             ui.Write("\u001b[<0;104;6M"); await Task.Delay(100);
             ui.Write("\u001b[<32;124;6M"); await Task.Delay(100);
             ui.Write("\u001b[<0;124;6m");
@@ -175,10 +175,10 @@ public sealed class LayoutTuiTests
     /// 按 F9 打开命令面板并等待出现 <c>COMMANDS</c>，输入命令名进行过滤，等待屏幕上出现该命令（而不是固定延时，
     /// 避免并行负载下界面来不及重绘），再稍候让过滤结果选中该项后按 Enter 执行。
     /// </summary>
-    /// <param name="ui">运行工作区界面的伪控制台会话。</param>
+    /// <param name="ui">运行工作区界面的伪终端会话。</param>
     /// <param name="command">命令面板中的完整命令名，例如 <c>Terminal: Split right</c>。</param>
     /// <returns>表示操作过程的任务。</returns>
-    internal static async Task Command(ConPtySession ui, string command)
+    internal static async Task Command(ITerminalSession ui, string command)
     {
         ui.Write("\u001b[20~");
         await Wait(() => ui.Screen.GetText().Contains("COMMANDS"), ui, "palette");
@@ -189,20 +189,14 @@ public sealed class LayoutTuiTests
     }
 
     /// <summary>
-    /// 在 180×55 的伪控制台中启动被测工作区界面：可执行文件优先取环境变量 <c>CREWTERM_TEST_EXE</c>，
-    /// 否则按测试输出路径是否含 <c>Release</c> 选用 <c>src\CrewTerm.App\bin\Release|Debug\net10.0\crewterm.exe</c>，并传入 <c>--state-dir</c> 与 <c>--project</c>。
+    /// 在 180×55 的伪终端中启动被测工作区界面（可执行文件见 <see cref="CrewTermBuild.Executable"/>），并传入 <c>--state-dir</c> 与 <c>--project</c>。
     /// </summary>
-    /// <param name="id">伪控制台会话标识。</param>
+    /// <param name="id">伪终端会话标识。</param>
     /// <param name="root">仓库根目录，同时作为进程工作目录和 <c>--project</c> 参数。</param>
     /// <param name="state">daemon 状态目录。</param>
-    /// <returns>运行界面的伪控制台会话。</returns>
-    internal static ConPtySession Launch(string id, string root, string state)
-    {
-        var config = AppContext.BaseDirectory.Contains("Release", StringComparison.OrdinalIgnoreCase) ? "Release" : "Debug";
-        var exe = Environment.GetEnvironmentVariable("CREWTERM_TEST_EXE")
-            ?? Path.Combine(root, "src", "CrewTerm.App", "bin", config, "net10.0", "crewterm.exe");
-        return ConPtySession.Start(id, $"\"{exe}\" --state-dir \"{state}\" --project \"{root}\"", root, 180, 55);
-    }
+    /// <returns>运行界面的伪终端会话。</returns>
+    internal static ITerminalSession Launch(string id, string root, string state)
+        => TerminalSession.Start(id, $"\"{CrewTermBuild.Executable}\" --state-dir \"{state}\" --project \"{root}\"", root, 180, 55);
 
     /// <summary>
     /// 在 15 秒内每 100 毫秒向 daemon 请求一次指定会话的屏幕文本，直到其中包含期望文本；超时则附上界面当前屏幕内容使测试失败。
@@ -210,9 +204,9 @@ public sealed class LayoutTuiTests
     /// <param name="client">连接测试 daemon 的客户端。</param>
     /// <param name="id">要检查的会话标识。</param>
     /// <param name="text">期望出现的文本。</param>
-    /// <param name="ui">运行工作区界面的伪控制台会话，仅用于失败时输出诊断屏幕。</param>
+    /// <param name="ui">运行工作区界面的伪终端会话，仅用于失败时输出诊断屏幕。</param>
     /// <returns>表示等待过程的任务。</returns>
-    internal static async Task WaitForText(DaemonClient client, string id, string text, ConPtySession ui)
+    internal static async Task WaitForText(DaemonClient client, string id, string text, ITerminalSession ui)
     {
         var end = DateTime.UtcNow.AddSeconds(15);
         while (DateTime.UtcNow < end)
@@ -228,10 +222,10 @@ public sealed class LayoutTuiTests
     /// 上限按多个测试程序集并行、CPU 被占满的情况放宽，条件成立时立即返回，不会拖慢正常运行。
     /// </summary>
     /// <param name="condition">要等待成立的条件。</param>
-    /// <param name="ui">运行工作区界面的伪控制台会话。</param>
+    /// <param name="ui">运行工作区界面的伪终端会话。</param>
     /// <param name="step">失败信息中描述当前步骤的文字。</param>
     /// <returns>表示等待过程的任务。</returns>
-    internal static async Task Wait(Func<bool> condition, ConPtySession ui, string step)
+    internal static async Task Wait(Func<bool> condition, ITerminalSession ui, string step)
     {
         var end = DateTime.UtcNow.AddSeconds(30);
         while (DateTime.UtcNow < end)
@@ -241,17 +235,5 @@ public sealed class LayoutTuiTests
             await Task.Delay(100);
         }
         Assert.Fail(step + "\n" + ui.Screen.GetText());
-    }
-
-    /// <summary>
-    /// 从测试输出目录向上查找包含 <c>CrewTerm.slnx</c> 的仓库根目录。
-    /// </summary>
-    /// <returns>仓库根目录的完整路径。</returns>
-    /// <exception cref="DirectoryNotFoundException">一直查到磁盘根目录仍未找到时抛出。</exception>
-    internal static string Repository()
-    {
-        var path = new DirectoryInfo(AppContext.BaseDirectory);
-        while (path is not null && !File.Exists(Path.Combine(path.FullName, "CrewTerm.slnx"))) path = path.Parent;
-        return path?.FullName ?? throw new DirectoryNotFoundException("CrewTerm source root");
     }
 }

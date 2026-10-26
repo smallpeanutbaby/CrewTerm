@@ -7,7 +7,7 @@ using CrewTerm.Terminal.Pty;
 namespace CrewTerm.App.Tests.Tui;
 
 /// <summary>
-/// 命令 <c>Agent: Choose second split terminal</c> 的端到端界面测试：在伪控制台（ConPTY）中启动真实的工作区并连接独立临时状态目录中的真实 daemon，
+/// 命令 <c>Agent: Choose second split terminal</c> 的端到端界面测试：在伪终端中启动真实的工作区并连接独立临时状态目录中的真实 daemon，
 /// 验证选择已显示的会话、未显示的会话以及其他项目的会话时，面板绑定、焦点、输入路由和分离后保存的布局。
 /// </summary>
 public sealed class SecondPaneSelectionTuiTests
@@ -19,10 +19,10 @@ public sealed class SecondPaneSelectionTuiTests
     [Fact]
     public async Task ChoosingSessionAlreadyInThirdPaneFocusesItWithoutDuplicateBindings()
     {
-        var root = LayoutTuiTests.Repository();
+        var root = CrewTermBuild.Repository;
         var state = NewState();
         var client = new DaemonClient(state);
-        ConPtySession? ui = null;
+        ITerminalSession? ui = null;
         try
         {
             ui = Launch(root, root, state);
@@ -60,10 +60,10 @@ public sealed class SecondPaneSelectionTuiTests
     [Fact]
     public async Task ChoosingAnUndisplayedSessionReplacesOnlySecondPane()
     {
-        var root = LayoutTuiTests.Repository();
+        var root = CrewTermBuild.Repository;
         var state = NewState();
         var client = new DaemonClient(state);
-        ConPtySession? ui = null;
+        ITerminalSession? ui = null;
         try
         {
             ui = Launch(root, root, state);
@@ -96,14 +96,14 @@ public sealed class SecondPaneSelectionTuiTests
     [Fact]
     public async Task ChoosingAnotherProjectsSessionSwitchesWorkspaceAndPreservesOriginalLayout()
     {
-        var root = LayoutTuiTests.Repository();
+        var root = CrewTermBuild.Repository;
         var state = NewState();
         var projectA = Path.Combine(state, "project-a");
         var projectB = Path.Combine(state, "project-b");
         Directory.CreateDirectory(projectA); Directory.CreateDirectory(projectB);
         await File.WriteAllTextAsync(Path.Combine(projectB, "ONLY_IN_B.txt"), "Project B");
         var client = new DaemonClient(state);
-        ConPtySession? ui = null;
+        ITerminalSession? ui = null;
         try
         {
             ui = Launch(root, projectA, state);
@@ -141,30 +141,24 @@ public sealed class SecondPaneSelectionTuiTests
     }
 
     /// <summary>
-    /// 在 180×55 的伪控制台中启动被测工作区：可执行文件优先取环境变量 <c>CREWTERM_TEST_EXE</c>，否则与
-    /// <see cref="LayoutTuiTests.Launch"/> 一样使用与测试相同构建配置（Debug/Release）的产物，并以指定项目目录作为 <c>--project</c>。
+    /// 在 180×55 的伪终端中启动被测工作区（可执行文件见 <see cref="CrewTermBuild.Executable"/>），并以指定项目目录作为 <c>--project</c>。
     /// </summary>
-    /// <param name="root">仓库根目录，用于定位可执行文件，同时作为进程工作目录。</param>
+    /// <param name="root">仓库根目录，作为进程工作目录。</param>
     /// <param name="project">通过 <c>--project</c> 打开的项目目录。</param>
     /// <param name="state">daemon 状态目录。</param>
-    /// <returns>运行界面的伪控制台会话。</returns>
-    private static ConPtySession Launch(string root, string project, string state)
-    {
-        var config = AppContext.BaseDirectory.Contains("Release", StringComparison.OrdinalIgnoreCase) ? "Release" : "Debug";
-        var exe = Environment.GetEnvironmentVariable("CREWTERM_TEST_EXE")
-            ?? Path.Combine(root, "src", "CrewTerm.App", "bin", config, "net10.0", "crewterm.exe");
-        return ConPtySession.Start("second-pane-ui", $"\"{exe}\" --state-dir \"{state}\" --project \"{project}\"", root, 180, 55);
-    }
+    /// <returns>运行界面的伪终端会话。</returns>
+    private static ITerminalSession Launch(string root, string project, string state)
+        => TerminalSession.Start("second-pane-ui", $"\"{CrewTermBuild.Executable}\" --state-dir \"{state}\" --project \"{project}\"", root, 180, 55);
 
     /// <summary>
     /// 等待界面出现 <c>F10 Detach</c>，即工作区已就绪。
     /// </summary>
-    /// <param name="ui">运行工作区界面的伪控制台会话。</param>
+    /// <param name="ui">运行工作区界面的伪终端会话。</param>
     /// <returns>表示等待过程的任务。</returns>
-    private static Task Ready(ConPtySession ui) => LayoutTuiTests.Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
+    private static Task Ready(ITerminalSession ui) => LayoutTuiTests.Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
 
     /// <summary>
-    /// 在指定目录中创建一个运行 <c>cmd.exe /d /q</c> 的命名会话，并断言创建成功。
+    /// 在指定目录中创建一个运行交互式 Shell（<see cref="TestShell.Interactive"/>）的命名会话，并断言创建成功。
     /// </summary>
     /// <param name="client">连接测试 daemon 的客户端。</param>
     /// <param name="directory">会话的工作目录（决定会话所属项目）。</param>
@@ -172,7 +166,7 @@ public sealed class SecondPaneSelectionTuiTests
     /// <returns>新会话的标识。</returns>
     private static async Task<string> Create(DaemonClient client, string directory, string name)
     {
-        var response = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: directory, Name: name));
+        var response = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: directory, Name: name));
         Assert.True(response.Ok, response.Error);
         return Assert.IsType<string>(response.SessionId);
     }
@@ -180,10 +174,10 @@ public sealed class SecondPaneSelectionTuiTests
     /// <summary>
     /// 通过命令面板执行 <c>Agent: Choose second split terminal</c>，在 <c>Second terminal</c> 选择器中输入会话名过滤后按 Enter，并等待选择器关闭。
     /// </summary>
-    /// <param name="ui">运行工作区界面的伪控制台会话。</param>
+    /// <param name="ui">运行工作区界面的伪终端会话。</param>
     /// <param name="name">要选择的会话名称。</param>
     /// <returns>表示操作过程的任务。</returns>
-    private static async Task ChooseSecond(ConPtySession ui, string name)
+    private static async Task ChooseSecond(ITerminalSession ui, string name)
     {
         await LayoutTuiTests.Command(ui, "Agent: Choose second split terminal");
         await LayoutTuiTests.Wait(() => ui.Screen.GetText().Contains("Second terminal"), ui, "second terminal chooser");
@@ -196,9 +190,9 @@ public sealed class SecondPaneSelectionTuiTests
     /// <summary>
     /// 按 F10 分离，等待界面进程退出（布局随之保存），并断言其退出码为 0。
     /// </summary>
-    /// <param name="ui">运行工作区界面的伪控制台会话。</param>
+    /// <param name="ui">运行工作区界面的伪终端会话。</param>
     /// <returns>表示操作过程的任务。</returns>
-    private static async Task Detach(ConPtySession ui)
+    private static async Task Detach(ITerminalSession ui)
     {
         ui.Write("\u001b[21~");
         await LayoutTuiTests.Wait(() => ui.HasExited, ui, "detach and persist layout");
@@ -206,13 +200,13 @@ public sealed class SecondPaneSelectionTuiTests
     }
 
     /// <summary>
-    /// 测试收尾：尽力向 daemon 发送 <c>stop</c>（忽略 I/O、超时与取消异常），最后释放伪控制台会话。
+    /// 测试收尾：尽力向 daemon 发送 <c>stop</c>（忽略 I/O、超时与取消异常），最后释放伪终端会话。
     /// </summary>
     /// <param name="client">连接测试 daemon 的客户端。</param>
-    /// <param name="ui">运行工作区界面的伪控制台会话；尚未启动时为 null。</param>
+    /// <param name="ui">运行工作区界面的伪终端会话；尚未启动时为 null。</param>
     /// <param name="state">本测试的临时状态目录，停止 daemon 后删除。</param>
     /// <returns>表示收尾过程的任务。</returns>
-    private static async Task Stop(DaemonClient client, ConPtySession? ui, string state)
+    private static async Task Stop(DaemonClient client, ITerminalSession? ui, string state)
     {
         try { await client.CallAsync(new("stop")); }
         catch (Exception error) when (error is IOException or TimeoutException or OperationCanceledException) { }

@@ -4,6 +4,7 @@ using CrewTerm.App.Client;
 using CrewTerm.App.Server;
 using CrewTerm.App.UI.Windows;
 using CrewTerm.Automation.Agents;
+using CrewTerm.Terminal.Pty;
 using CrewTerm.Core.IO;
 using Terminal.Gui.App;
 
@@ -29,7 +30,7 @@ internal static class Program
             options = CrewTermCommandLine.Parse(args);
             if (options.Command is "help" or "h") { Console.WriteLine(CrewTermHelp.Text); return 0; }
             if (options.Command == "version") { Console.WriteLine("CrewTerm " + CrewTermVersion.Current); return 0; }
-            if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("This release requires Windows 10 1809 or later (ConPTY).");
+            if (!TerminalSession.IsSupported) throw new PlatformNotSupportedException("CrewTerm requires Windows 10 1809 or later, Linux, or macOS.");
             return options.Command switch
             {
                 "agent-hook" => AgentHookCli.RunAsync(options).GetAwaiter().GetResult(),
@@ -59,6 +60,8 @@ internal static class Program
     /// <returns>退出码 0。</returns>
     private static int RunServer(CrewTermCommandLine options)
     {
+        // Linux / macOS：脱离启动它的终端（新会话 + 标准输入输出改接 /dev/null），关闭终端窗口不会结束 daemon。
+        TerminalSession.DetachCurrentProcess();
         using var host = new DaemonHost(options.StateDirectory);
         host.RunAsync().GetAwaiter().GetResult();
         return 0;

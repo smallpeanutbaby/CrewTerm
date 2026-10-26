@@ -1,12 +1,13 @@
 namespace CrewTerm.Automation.Agents;
 
 /// <summary>
-/// 按 PATH 与 PATHEXT 规则查找可执行文件，行为与 Windows 命令行解析一致。
+/// 按 PATH（Windows 上还有 PATHEXT）规则查找可执行文件，行为与系统命令行解析一致。
 /// </summary>
 /// <remarks>
-/// npm 全局安装的 CLI 在 Windows 上同时存在无扩展名的 Unix 脚本和 <c>.cmd</c> 启动脚本；
-/// 对无扩展名的名称会先按 PATHEXT 尝试 <c>.COM/.EXE/.BAT/.CMD</c>，因此会找到可在 Windows 运行的版本。
-/// 本类只检查文件是否存在，不会启动程序。
+/// <para>Windows：npm 全局安装的 CLI 同时存在无扩展名的 Unix 脚本和 <c>.cmd</c> 启动脚本；
+/// 对无扩展名的名称会先按 PATHEXT 尝试 <c>.COM/.EXE/.BAT/.CMD</c>，因此会找到可在 Windows 运行的版本。</para>
+/// <para>Linux / macOS：只接受有执行权限（任一身份）的普通文件，与 Shell 的查找规则一致。</para>
+/// <para>本类只检查文件，不会启动程序。</para>
 /// </remarks>
 public static class ExecutableLocator
 {
@@ -39,8 +40,17 @@ public static class ExecutableLocator
             if (OperatingSystem.IsWindows() && !Path.HasExtension(candidate))
                 foreach (var extension in extensions)
                     if (File.Exists(candidate + extension)) return candidate + extension.ToLowerInvariant();
-            if (File.Exists(candidate)) return candidate;
+            if (IsExecutable(candidate)) return candidate;
         }
         return null;
     }
+
+    /// <summary>
+    /// 判断候选路径是否可以执行：Windows 上只要文件存在；Linux / macOS 上还要求有执行权限。
+    /// </summary>
+    /// <param name="path">绝对路径。</param>
+    /// <returns>可以执行时为 <see langword="true"/>。</returns>
+    private static bool IsExecutable(string path)
+        => File.Exists(path) && (OperatingSystem.IsWindows()
+            || (File.GetUnixFileMode(path) & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0);
 }

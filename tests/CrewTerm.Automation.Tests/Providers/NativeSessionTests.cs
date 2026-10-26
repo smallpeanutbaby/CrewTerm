@@ -1,6 +1,5 @@
 using CrewTerm.Automation.Providers;
 using CrewTerm.Automation.Tasks;
-using CrewTerm.Automation.Tests.Fixtures;
 
 namespace CrewTerm.Automation.Tests.Providers;
 
@@ -245,14 +244,13 @@ public sealed class NativeSessionTests : IDisposable
     }
 
     /// <summary>
-    /// 验证：以带引号的 <c>codex.cmd</c> 替身路径保存的 Codex 会话，重新打开存储后生成的恢复命令经 <see cref="TaskRunner"/>
+    /// 验证：以带引号的 <c>codex</c> 替身路径保存的 Codex 会话，重新打开存储后生成的恢复命令经 <see cref="TaskRunner"/>
     /// 真实运行，替身程序收到的参数恰为 <c>resume &lt;标识&gt;</c>。
     /// </summary>
     [Fact]
     public async Task ReopenedCatalogResumesExactIdThroughARealLocalFixture()
     {
-        var fixture = Path.Combine(root, "codex.cmd");
-        File.WriteAllText(fixture, "@echo off\r\necho %* > received.txt\r\n");
+        var fixture = TestShell.WriteArgumentRecorder(root, "codex", "received.txt");
         new NativeSessionStore(root).Upsert(new("fixture", "Fixture", $"\"{fixture}\"", root, "codex", Conversation));
         var recovered = new NativeSessionStore(root).Get("fixture")!;
         var plan = new ProviderSessionService().PrepareResume(recovered);
@@ -271,10 +269,10 @@ public sealed class NativeSessionTests : IDisposable
     /// <param name="command">原始启动命令。</param>
     /// <param name="expected">期望生成的恢复命令。</param>
     [Theory]
-    [InlineData("codex --profile work -c model_provider=local --cd \"C:\\work space\" \"initial request\"", "codex resume 550e8400-e29b-41d4-a716-446655440000 --profile work -c model_provider=local --cd \"C:\\work space\"")]
+    [InlineData("codex --profile work -c model_provider=local --cd \"/work space\" \"initial request\"", "codex resume 550e8400-e29b-41d4-a716-446655440000 --profile work -c model_provider=local --cd \"/work space\"")]
     [InlineData("codex --profile=work --model chosen --no-alt-screen", "codex resume 550e8400-e29b-41d4-a716-446655440000 --profile=work --model chosen --no-alt-screen")]
-    [InlineData("claude --settings \"C:\\settings folder\\work.json\" --model sonnet \"initial request\"", "claude --resume 550e8400-e29b-41d4-a716-446655440000 --settings \"C:\\settings folder\\work.json\" --model sonnet")]
-    [InlineData("claude --settings=\"C:\\settings folder\\work.json\" --permission-mode plan --system-prompt \"keep these instructions\"", "claude --resume 550e8400-e29b-41d4-a716-446655440000 --settings=\"C:\\settings folder\\work.json\" --permission-mode plan --system-prompt \"keep these instructions\"")]
+    [InlineData("claude --settings \"/settings folder/work.json\" --model sonnet \"initial request\"", "claude --resume 550e8400-e29b-41d4-a716-446655440000 --settings \"/settings folder/work.json\" --model sonnet")]
+    [InlineData("claude --settings=\"/settings folder/work.json\" --permission-mode plan --system-prompt \"keep these instructions\"", "claude --resume 550e8400-e29b-41d4-a716-446655440000 --settings=\"/settings folder/work.json\" --permission-mode plan --system-prompt \"keep these instructions\"")]
     [InlineData("claude --model sonnet --session-id 550e8400-e29b-41d4-a716-446655440000 --resume", "claude --resume 550e8400-e29b-41d4-a716-446655440000 --model sonnet")]
     public void ResumePreservesVerifiedConfigurationOptionsAndOmitsTheInitialPrompt(string command, string expected)
     {
@@ -282,6 +280,37 @@ public sealed class NativeSessionTests : IDisposable
         var saved = new NativeSessionRecord("crew", "Agent", command, root, NativeSessionId: Conversation);
         var resume = service.PrepareResume(saved);
         Assert.Equal(expected, resume.Command);
+    }
+
+    /// <summary>
+    /// 验证（Windows）：带反斜杠的 Windows 路径作为选项值原样保留在恢复命令中。
+    /// </summary>
+    [WindowsFact]
+    public void ResumePreservesWindowsPathsWithBackslashes()
+    {
+        var saved = new NativeSessionRecord("crew", "Agent", "codex --cd \"C:\\work space\" \"initial request\"", root, NativeSessionId: Conversation);
+        Assert.Equal("codex resume " + Conversation + " --cd \"C:\\work space\"", new ProviderSessionService().PrepareResume(saved).Command);
+    }
+
+    /// <summary>
+    /// 验证（Linux / macOS）：命令经 <c>/bin/sh</c> 执行，含变量展开、命令替换、反斜杠、引号外单引号、波浪号或分号等 Shell 语法的命令
+    /// 无法可靠改写，必须显式登记恢复命令；双引号内的单引号按字面处理，仍可恢复。
+    /// </summary>
+    /// <param name="command">原始启动命令。</param>
+    /// <param name="resumable">是否可以自动生成恢复命令。</param>
+    [UnixTheory]
+    [InlineData("codex --cd $HOME", false)]
+    [InlineData("codex --cd \"$HOME/work\"", false)]
+    [InlineData("codex --cd `pwd`", false)]
+    [InlineData("codex --cd /work\\ space", false)]
+    [InlineData("codex --cd 'work space'", false)]
+    [InlineData("codex --profile work; rm -rf work", false)]
+    [InlineData("codex --cd ~/work", false)]
+    [InlineData("codex -c \"model_provider='custom backend'\"", true)]
+    public void UnixShellSyntaxRequiresAnExplicitResumeRegistration(string command, bool resumable)
+    {
+        var saved = new NativeSessionRecord("crew", "Agent", command, root, "codex", Conversation);
+        Assert.Equal(resumable, new ProviderSessionService().GetResumeCapability(saved).CanResume);
     }
 
     /// <summary>
@@ -353,7 +382,7 @@ public sealed class NativeSessionTests : IDisposable
     }
 
     /// <summary>
-    /// 验证：<c>codex.cmd</c> 替身把参数转交给 PowerShell 脚本，脚本以 JSON 记录收到的参数；重新打开存储后生成的恢复命令经
+    /// 验证：<c>codex</c> 替身把参数转交给 PowerShell 脚本，脚本以 JSON 记录收到的参数；重新打开存储后生成的恢复命令经
     /// <see cref="TaskRunner"/> 真实运行，进程收到的参数依次为 <c>resume</c>、标识、<c>--profile work</c>、带空格的 <c>-c</c> 取值
     /// 以及名称含 <c>&amp;</c> 的 <c>--cd</c> 目录，均保持字面值，且不含旧提示词。
     /// </summary>
@@ -362,8 +391,7 @@ public sealed class NativeSessionTests : IDisposable
     {
         var script = Path.Combine(root, "capture.ps1");
         PowerShellFixture.WriteScript(script, "[IO.File]::WriteAllText('arguments.json', (ConvertTo-Json -InputObject @($args) -Compress))");
-        var fixture = Path.Combine(root, "codex.cmd");
-        File.WriteAllText(fixture, $"@{PowerShellFixture.CommandLine(script)} %*\r\n");
+        var fixture = TestShell.WriteLauncher(root, "codex", PowerShellFixture.CommandLine(script));
         var workingDirectory = Directory.CreateDirectory(Path.Combine(root, "project & folder")).FullName;
         var original = $"\"{fixture}\" --profile work -c \"model_provider=custom backend\" --cd \"{workingDirectory}\" \"old prompt\"";
         new NativeSessionStore(root).Upsert(new("fixture", "Fixture", original, root, "codex", Conversation));

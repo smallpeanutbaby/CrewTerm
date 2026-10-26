@@ -56,7 +56,7 @@ public sealed class DaemonTests : IAsyncLifetime
     public async Task ReconnectingClientSeesSameLiveSession()
     {
         var client = new DaemonClient(state);
-        var created = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state));
+        var created = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state));
         Assert.True(created.Ok, created.Error);
         var second = new DaemonClient(state);
         var sessions = await second.CallAsync(new("list"));
@@ -81,7 +81,7 @@ public sealed class DaemonTests : IAsyncLifetime
     public async Task InvalidWorkingDirectoryFailsWithoutSession()
     {
         var client = new DaemonClient(state);
-        var result = await client.CallAsync(new("create", Command: "cmd.exe", WorkingDirectory: Path.Combine(state, "missing")));
+        var result = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: Path.Combine(state, "missing")));
         Assert.False(result.Ok);
         Assert.NotEmpty(result.Error!);
         Assert.Empty((await client.CallAsync(new("list"))).Sessions!);
@@ -105,7 +105,7 @@ public sealed class DaemonTests : IAsyncLifetime
     public async Task InvalidResizeIsRejected()
     {
         var client = new DaemonClient(state);
-        var created = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state));
+        var created = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state));
         var result = await client.CallAsync(new("resize", SessionId: created.SessionId, Columns: -1));
         Assert.False(result.Ok);
     }
@@ -118,7 +118,7 @@ public sealed class DaemonTests : IAsyncLifetime
     {
         Directory.CreateDirectory(Path.Combine(state, "saved-sessions.json"));
         var client = new DaemonClient(state);
-        var created = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state));
+        var created = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state));
         Assert.False(created.Ok);
         Assert.Empty((await client.CallAsync(new("list"))).Sessions!);
     }

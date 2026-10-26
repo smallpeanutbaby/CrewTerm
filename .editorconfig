@@ -18,7 +18,3 @@ indent_size = 2
 [*.cs]
 dotnet_style_namespace_match_folder = true
 dotnet_diagnostic.IDE0130.severity = warning
-
-# 这个 PowerShell 夹具同时以链接方式编入 App.Tests，物理位置决定了它的命名空间。
-[tests/CrewTerm.Automation.Tests/Fixtures/PowerShellFixture.cs]
-dotnet_diagnostic.IDE0130.severity = none

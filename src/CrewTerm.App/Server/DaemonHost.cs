@@ -117,7 +117,7 @@ public sealed partial class DaemonHost : IDisposable
     public DaemonHost(string stateDirectory)
     {
         this.stateDirectory = Path.GetFullPath(stateDirectory);
-        Directory.CreateDirectory(this.stateDirectory);
+        StateFiles.EnsureDirectory(this.stateDirectory);
         var settings = new WorkspaceSettingsStore(this.stateDirectory).Load();
         taskService = new DaemonTaskService(this.stateDirectory, settings.MaximumConcurrentTasks);
         agentActivities = new AgentActivityStore(this.stateDirectory);

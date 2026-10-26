@@ -73,7 +73,7 @@ public sealed class DaemonTaskProtocolTests : IAsyncLifetime
     [Fact]
     public async Task NewClientSeesRunningTaskAndListsOnlyCompactSummaries()
     {
-        var command = "echo started & ping -n 2 127.0.0.1 >nul & echo 你好终端";
+        var command = TestShell.Sequence("echo started", TestShell.Sleep(1), "echo 你好终端");
         var started = await new DaemonClient(state).CallAsync(new("task-start", Name: "reconnect", Command: command, WorkingDirectory: state));
         Assert.True(started.Ok, started.Error);
         var client = new DaemonClient(state);
@@ -110,7 +110,7 @@ public sealed class DaemonTaskProtocolTests : IAsyncLifetime
     public async Task TaskCancelProtocolCancelsActiveTask()
     {
         var client = new DaemonClient(state);
-        var started = await client.CallAsync(new("task-start", Command: "echo started & ping -n 60 127.0.0.1 >nul", WorkingDirectory: state));
+        var started = await client.CallAsync(new("task-start", Command: TestShell.Sequence("echo started", TestShell.Sleep(59)), WorkingDirectory: state));
         Assert.True(started.Ok, started.Error);
         await WaitForTaskAsync(client, started.SessionId!, info => info.Output.Contains("started"));
         Assert.True((await client.CallAsync(new("task-cancel", SessionId: started.SessionId))).Ok);
@@ -126,7 +126,7 @@ public sealed class DaemonTaskProtocolTests : IAsyncLifetime
     public async Task DaemonReadsConfiguredParallelism()
     {
         var client = new DaemonClient(state);
-        var first = await client.CallAsync(new("task-start", Command: "echo started & ping -n 3 127.0.0.1 >nul & echo done > first-finished", WorkingDirectory: state));
+        var first = await client.CallAsync(new("task-start", Command: TestShell.Sequence("echo started", TestShell.Sleep(2), "echo done > first-finished"), WorkingDirectory: state));
         Assert.True(first.Ok, first.Error);
         await WaitForTaskAsync(client, first.SessionId!, info => info.Output.Contains("started"));
         var second = await client.CallAsync(new("task-start", Command: "echo done > second-finished", WorkingDirectory: state));
@@ -144,7 +144,7 @@ public sealed class DaemonTaskProtocolTests : IAsyncLifetime
     public async Task StopProtocolCancelsBackgroundTasksBeforeServerReturns()
     {
         var client = new DaemonClient(state);
-        var started = await client.CallAsync(new("task-start", Command: "echo started & ping -n 60 127.0.0.1 >nul", WorkingDirectory: state));
+        var started = await client.CallAsync(new("task-start", Command: TestShell.Sequence("echo started", TestShell.Sleep(59)), WorkingDirectory: state));
         Assert.True(started.Ok, started.Error);
         await WaitForTaskAsync(client, started.SessionId!, info => info.Output.Contains("started"));
         Assert.True((await client.CallAsync(new("stop"))).Ok);

@@ -7,7 +7,7 @@ using static CrewTerm.App.Tests.Tui.LayoutTuiTests;
 namespace CrewTerm.App.Tests.Tui;
 
 /// <summary>
-/// 扩展功能（恢复原生会话、本地插件）的端到端界面测试：在伪控制台（ConPTY）中启动真实的 <c>crewterm</c> 工作区，
+/// 扩展功能（恢复原生会话、本地插件）的端到端界面测试：在伪终端中启动真实的 <c>crewterm</c> 工作区，
 /// 连接独立临时状态目录中的真实 daemon，通过命令面板驱动 TUI，并用 <see cref="DaemonClient"/> 和磁盘文件核对实际效果。
 /// </summary>
 public sealed class ExtensionTuiTests
@@ -19,14 +19,13 @@ public sealed class ExtensionTuiTests
     [Fact]
     public async Task ResumeMenuStartsTheExactSavedNativeConversation()
     {
-        var root = Repository();
+        var root = CrewTermBuild.Repository;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermExtensionUi", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(state);
         var client = new DaemonClient(state);
-        // 夹具沿用真实提供方的可执行文件名（codex.cmd）；对于任意命名的包装脚本，
+        // 夹具沿用真实提供方的可执行文件名（codex）；对于任意命名的包装脚本，
         // 生产环境的提供方适配器有意要求显式提供恢复命令。
-        var fixture = Path.Combine(state, "codex.cmd");
-        File.WriteAllText(fixture, "@echo off\r\nif \"%~1\"==\"resume\" (\r\n echo %~2>resumed.txt\r\n)\r\nping -n 60 127.0.0.1 >nul\r\n");
+        var fixture = TestShell.WriteResumeRecorder(state, "codex", "resumed.txt");
         const string nativeId = "871fcb41-2d23-48cb-9f86-e9d03934cfd1";
         try
         {
@@ -59,7 +58,7 @@ public sealed class ExtensionTuiTests
     [Fact]
     public async Task LocalPluginCanBeInstalledEnabledRunAndRemovedThroughUi()
     {
-        var root = Repository();
+        var root = CrewTermBuild.Repository;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermExtensionUi", Guid.NewGuid().ToString("N"));
         var directory = Directory.CreateDirectory(Path.Combine(state, "local plugin")).FullName;
         var script = Path.Combine(directory, "proof.ps1");

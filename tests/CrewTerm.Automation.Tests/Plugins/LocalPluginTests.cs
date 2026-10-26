@@ -1,6 +1,5 @@
 using System.Text.Json;
 using CrewTerm.Automation.Plugins;
-using CrewTerm.Automation.Tests.Fixtures;
 
 namespace CrewTerm.Automation.Tests.Plugins;
 
@@ -81,14 +80,17 @@ public sealed class LocalPluginTests : IDisposable
     }
 
     /// <summary>
-    /// 验证：清单不是有效 JSON、没有任何命令，或命令的工作目录用 <c>..</c> 跳出插件目录时，安装抛出
-    /// <see cref="InvalidDataException"/>，且不会登记任何插件。
+    /// 验证：清单不是有效 JSON、没有任何命令、命令的工作目录用 <c>..</c> 跳出插件目录，或某个操作系统的替代调用
+    /// 带引号、用相对路径跳出插件目录、含未知字段时，安装抛出 <see cref="InvalidDataException"/>，且不会登记任何插件。
     /// </summary>
     /// <param name="json">写入 <c>crewterm-plugin.json</c> 的非法清单内容。</param>
     [Theory]
     [InlineData("{broken")]
     [InlineData("{\"id\":\"bad\",\"name\":\"Bad\",\"version\":\"1\",\"commands\":[]}")]
     [InlineData("{\"id\":\"bad\",\"name\":\"Bad\",\"version\":\"1\",\"commands\":[{\"id\":\"run\",\"name\":\"Run\",\"executable\":\"cmd.exe\",\"workingDirectory\":\"..\"}]}")]
+    [InlineData("{\"id\":\"bad\",\"name\":\"Bad\",\"version\":\"1\",\"commands\":[{\"id\":\"run\",\"name\":\"Run\",\"executable\":\"tool\",\"windows\":{\"executable\":\"\\\"quoted\\\"\"}}]}")]
+    [InlineData("{\"id\":\"bad\",\"name\":\"Bad\",\"version\":\"1\",\"commands\":[{\"id\":\"run\",\"name\":\"Run\",\"executable\":\"tool\",\"linux\":{\"executable\":\"../outside/run\"}}]}")]
+    [InlineData("{\"id\":\"bad\",\"name\":\"Bad\",\"version\":\"1\",\"commands\":[{\"id\":\"run\",\"name\":\"Run\",\"executable\":\"tool\",\"osx\":{\"shell\":\"zsh\"}}]}")]
     public void InvalidManifestIsRejectedBeforeRegistration(string json)
     {
         var source = Directory.CreateDirectory(Path.Combine(root, "invalid")).FullName;
@@ -96,6 +98,32 @@ public sealed class LocalPluginTests : IDisposable
         var catalog = new LocalPluginCatalog(State);
         Assert.Throws<InvalidDataException>(() => catalog.Install(source));
         Assert.Empty(catalog.List());
+    }
+
+    /// <summary>
+    /// 验证：命令按当前操作系统选用 <c>windows</c>、<c>linux</c> 或 <c>osx</c> 替代调用中给出的字段，未给出的字段沿用默认值；
+    /// 没有对应替代调用时使用默认调用。
+    /// </summary>
+    [Fact]
+    public void PlatformOverridesReplaceOnlyTheFieldsTheyDeclare()
+    {
+        var current = new LocalPluginPlatformCommand("platform-tool");
+        var command = new LocalPluginCommand("run", "Run", "default-tool", ["--default"],
+            Windows: OperatingSystem.IsWindows() ? current : null,
+            Linux: OperatingSystem.IsLinux() ? current : null,
+            Osx: OperatingSystem.IsMacOS() ? current : null);
+        Assert.Equal("platform-tool", command.EffectiveExecutable);
+        Assert.Equal(new[] { "--default" }, command.EffectiveArguments);
+
+        var argumentsOnly = new LocalPluginPlatformCommand(Arguments: ["--platform"]);
+        var other = new LocalPluginCommand("run", "Run", "default-tool", ["--default"],
+            Windows: argumentsOnly, Linux: argumentsOnly, Osx: argumentsOnly);
+        Assert.Equal("default-tool", other.EffectiveExecutable);
+        Assert.Equal(new[] { "--platform" }, other.EffectiveArguments);
+
+        var plain = new LocalPluginCommand("run", "Run", "default-tool", ["--default"]);
+        Assert.Equal("default-tool", plain.EffectiveExecutable);
+        Assert.Equal(new[] { "--default" }, plain.EffectiveArguments);
     }
 
     /// <summary>

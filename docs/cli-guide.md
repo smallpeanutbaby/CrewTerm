@@ -1,23 +1,26 @@
-# CrewTerm 0.2 CLI、Agent 协作与后台任务
+# CrewTerm CLI、Agent 协作与后台任务
 
-CrewTerm 使用 Windows ConPTY，要求 Windows 10 1809 或更高版本。以下示例在 PowerShell 中运行，假定当前目录中已有 0.2 构建或发布后的 `crewterm.exe`。功能验收状态见 [0.2 矩阵](v02-features.md)。
+CrewTerm 支持 Windows 10 1809+、Linux 与 macOS。以下示例使用 PowerShell 语法（Windows PowerShell 5.1，或三个平台上的 PowerShell 7），
+假定 `crewterm` 已在 `PATH` 中。在 bash / zsh 中使用时，把 PowerShell 的回车 `` `r `` 写成 `$'\r'`，把 `| ConvertFrom-Json` 换成 `jq` 等工具即可。
+功能验收状态见 [0.2 矩阵](v02-features.md)。
 
 ## 检查环境
 
 ```powershell
-.\crewterm.exe --help
-.\crewterm.exe --version
-.\crewterm.exe doctor
+crewterm --help
+crewterm --version
+crewterm doctor
 ```
 
-`doctor` 显示状态目录及已发现的 Claude Code、Codex、OpenCode、Gemini CLI、GitHub Copilot CLI 和 Shell 可执行文件。它检查 PATH 中的程序位置，包括 Windows `.cmd` 启动脚本；它不会启动 AI 会话、安装工具或验证登录状态。Agent 的安装、登录与计费由对应 CLI 管理。
+`doctor` 显示状态目录及已发现的 Claude Code、Codex、OpenCode、Gemini CLI、GitHub Copilot CLI 和 Shell 可执行文件。它检查 PATH 中的程序位置，包括 Windows 上的 `.cmd` 启动脚本，Linux / macOS 上只认有执行权限的文件；它不会启动 AI 会话、安装工具或验证登录状态。Agent 的安装、登录与计费由对应 CLI 管理。
 
-默认状态目录为 `%LOCALAPPDATA%\CrewTerm`。可以通过 `--state-dir PATH` 使用独立实例；后续命令必须使用相同的目录，才能访问同一批会话和任务。带空格的路径需要加引号。
+默认状态目录：Windows 为 `%LOCALAPPDATA%\CrewTerm`，Linux 为 `~/.local/share/CrewTerm`（或 `$XDG_DATA_HOME/CrewTerm`），
+macOS 为 `~/Library/Application Support/CrewTerm`。可以通过 `--state-dir PATH` 使用独立实例；后续命令必须使用相同的目录，才能访问同一批会话和任务。带空格的路径需要加引号。
 
 ```powershell
-$state = Join-Path $env:LOCALAPPDATA 'CrewTerm'
-$project = 'D:\代码\CrewTerm'
-.\crewterm.exe --state-dir $state --project $project
+$state = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'CrewTerm'
+$project = (Get-Location).Path
+crewterm --state-dir $state --project $project
 ```
 
 最后一条命令打开工作区。以下命令可在其他终端中查询和控制同一个后台实例。
@@ -31,9 +34,9 @@ $project = 'D:\代码\CrewTerm'
 先完成或保存旧实例的工作，再执行：
 
 ```powershell
-.\crewterm.exe --state-dir $state stop
+crewterm --state-dir $state stop
 # 等待旧服务退出后，再打开新版工作区。
-.\crewterm.exe --state-dir $state --project $project
+crewterm --state-dir $state --project $project
 ```
 
 `stop` 会终止这个状态目录下的全部终端与后台任务。想保留旧实例并先试用 0.2，可给新版指定另一个 `--state-dir`；不同目录互不共享实时会话。
@@ -43,15 +46,17 @@ $project = 'D:\代码\CrewTerm'
 `new` 启动有真实终端的交互式程序，适合 Shell 或 Agent CLI。第一次访问会自动启动 daemon。`new` 成功时返回 JSON，`SessionId` 是后续命令使用的会话 ID。
 
 ```powershell
-$created = .\crewterm.exe --state-dir $state new `
+$created = crewterm --state-dir $state new `
     --command 'cmd.exe /d /q' --project $project --name 'Shell' | ConvertFrom-Json
 $sessionId = $created.SessionId
 
-.\crewterm.exe --state-dir $state send $sessionId --text "echo CREWTERM_READY`r"
-.\crewterm.exe --state-dir $state read $sessionId
-.\crewterm.exe --state-dir $state sessions
-.\crewterm.exe --state-dir $state close $sessionId
+crewterm --state-dir $state send $sessionId --text "echo CREWTERM_READY`r"
+crewterm --state-dir $state read $sessionId
+crewterm --state-dir $state sessions
+crewterm --state-dir $state close $sessionId
 ```
+
+示例中的 `cmd.exe /d /q` 是 Windows 的交互式 Shell；Linux / macOS 上换成 `/bin/sh`、`bash` 或 `zsh`。
 
 `send` 按原样发送文本，不自动补回车。上例中的 PowerShell `` `r `` 是实际回车；字面文本 `\r` 不会被 CrewTerm 转成回车。`read` 返回当前终端屏幕的纯文本，而不是 JSON 或完整无限历史；如果子进程还在输出，可以再次读取。
 
@@ -66,14 +71,14 @@ $sessionId = $created.SessionId
 ## 语义状态、通知与等待
 
 ```powershell
-.\crewterm.exe --state-dir $state agent-state
-.\crewterm.exe --state-dir $state agent-state $sessionId
-.\crewterm.exe --state-dir $state agent-report $sessionId `
+crewterm --state-dir $state agent-state
+crewterm --state-dir $state agent-state $sessionId
+crewterm --state-dir $state agent-report $sessionId `
     --state working --source api --reason '已开始构建'
-.\crewterm.exe --state-dir $state agent-report $sessionId `
+crewterm --state-dir $state agent-report $sessionId `
     --state done --reason '构建退出码为 0，结果已检查'
-.\crewterm.exe --state-dir $state notifications
-.\crewterm.exe --state-dir $state notifications $sessionId
+crewterm --state-dir $state notifications
+crewterm --state-dir $state notifications $sessionId
 ```
 
 有效状态为 `Unknown`、`Working`、`Blocked`、`Done`、`Idle`、`Exited`，输入不区分大小写。单会话结果位于 `Activity`，全部结果位于 `Activities`，包含 `State`、`Source`、`Reason`、`ChangedAt`、`Revision`。`agent-report` 是调用者的显式报告，不会替调用者验证模型或构建是否真的完成。省略 `--source` 时为 `api`。
@@ -81,16 +86,16 @@ $sessionId = $created.SessionId
 `Unknown` 表示证据不足；`Blocked` 表示等待输入或决策；`Done` 表示尚未确认的完成；完成通知被显式确认后可变为 `Idle`。进入 Done/Blocked 会创建通知，重复观察同一状态不会重复创建。通知读取不会修改已读状态：
 
 ```powershell
-$notices = (.\crewterm.exe --state-dir $state notifications $sessionId | ConvertFrom-Json).Notifications
+$notices = (crewterm --state-dir $state notifications $sessionId | ConvertFrom-Json).Notifications
 # 查看后，明确选择一个通知进行确认。
-.\crewterm.exe --state-dir $state notification-read $notices[0].Id
+crewterm --state-dir $state notification-read $notices[0].Id
 ```
 
 Blocked 的通知被标为已读后仍然是 Blocked，不等于用户已批准工具。优先级依次为等待输入、未读完成、未确认消息、工作中。界面通过 F9 的 `Agent: Notifications`、`Agent: Mark selected as read` 和 `Agent: Explain selected status` 操作；仅轮询或切换列表不会自动确认。
 
 ```powershell
-$before = (.\crewterm.exe --state-dir $state agent-state $sessionId | ConvertFrom-Json).Activity
-.\crewterm.exe --state-dir $state agent-wait $sessionId `
+$before = (crewterm --state-dir $state agent-state $sessionId | ConvertFrom-Json).Activity
+crewterm --state-dir $state agent-wait $sessionId `
     --state 'done,blocked,exited' --timeout-ms 30000 --after-revision $before.Revision
 ```
 
@@ -103,16 +108,16 @@ $before = (.\crewterm.exe --state-dir $state agent-state $sessionId | ConvertFro
 ```powershell
 $from = 'SENDING_CREWTERM_ID'
 $to = 'RECEIVING_CREWTERM_ID'
-$sent = .\crewterm.exe --state-dir $state message-send `
+$sent = crewterm --state-dir $state message-send `
     --from $from --to $to --text '请检查 parser 改动' | ConvertFrom-Json
 
-.\crewterm.exe --state-dir $state message-list $to
-.\crewterm.exe --state-dir $state message-ack $to --message $sent.Message.Id
-.\crewterm.exe --state-dir $state message-send `
+crewterm --state-dir $state message-list $to
+crewterm --state-dir $state message-ack $to --message $sent.Message.Id
+crewterm --state-dir $state message-send `
     --from $to --to $from --text '已检查，建议见说明' --reply-to $sent.Message.Id
 
-.\crewterm.exe --state-dir $state agent-prompt $to --text '请执行已确认的测试任务'
-.\crewterm.exe --state-dir $state agent-handoff `
+crewterm --state-dir $state agent-prompt $to --text '请执行已确认的测试任务'
+crewterm --state-dir $state agent-handoff `
     --from $from --to $to --text '请接手修改并报告结果'
 ```
 
@@ -123,12 +128,12 @@ $sent = .\crewterm.exe --state-dir $state message-send `
 ## 原生会话恢复
 
 ```powershell
-.\crewterm.exe --state-dir $state sessions --all true
-.\crewterm.exe --state-dir $state session-bind $sessionId `
+crewterm --state-dir $state sessions --all true
+crewterm --state-dir $state session-bind $sessionId `
     --provider codex --native-id 'EXACT_NATIVE_UUID'
-.\crewterm.exe --state-dir $state session-resume $sessionId
-.\crewterm.exe --state-dir $state session-restart $sessionId
-.\crewterm.exe --state-dir $state session-forget $sessionId
+crewterm --state-dir $state session-resume $sessionId
+crewterm --state-dir $state session-restart $sessionId
+crewterm --state-dir $state session-forget $sessionId
 ```
 
 这些是不同操作：`session-resume` 续接登记的精确对话；`session-restart` 明确开始新对话；`session-forget` 移除已经关闭的记录及相关 CrewTerm 活动资料，保留 provider 对话文件。正在运行的会话不会重复 resume，遗忘前需要先 close。
@@ -136,7 +141,7 @@ $sent = .\crewterm.exe --state-dir $state message-send `
 Claude、Codex、Gemini、Copilot 的自动恢复适配要求完整 UUID，OpenCode 要求 `ses_...` ID。不会拿名称、前缀或 `--last` 猜测目标。未知 provider 或复杂命令可登记完整命令：
 
 ```powershell
-.\crewterm.exe --state-dir $state session-bind $sessionId `
+crewterm --state-dir $state session-bind $sessionId `
     --provider custom --resume-command 'my-agent resume exact-conversation-id'
 ```
 
@@ -149,21 +154,21 @@ Claude、Codex、Gemini、Copilot 的自动恢复适配要求完整 UUID，OpenC
 ## 本地插件
 
 ```powershell
-.\crewterm.exe --state-dir $state plugins
-.\crewterm.exe --state-dir $state plugin-install `
+crewterm --state-dir $state plugins
+crewterm --state-dir $state plugin-install `
     --path 'D:\代码\CrewTerm\examples\plugins\workspace-notes'
-.\crewterm.exe --state-dir $state plugin-enable crewterm.workspace-notes --enabled true
+crewterm --state-dir $state plugin-enable crewterm.workspace-notes --enabled true
 $payload = @{ workingDirectory = $project } | ConvertTo-Json -Compress
-.\crewterm.exe --state-dir $state plugin-run crewterm.workspace-notes --command summary --json $payload
-.\crewterm.exe --state-dir $state plugin-history
-.\crewterm.exe --state-dir $state plugin-enable crewterm.workspace-notes --enabled false
-.\crewterm.exe --state-dir $state plugin-remove crewterm.workspace-notes
+crewterm --state-dir $state plugin-run crewterm.workspace-notes --command summary --json $payload
+crewterm --state-dir $state plugin-history
+crewterm --state-dir $state plugin-enable crewterm.workspace-notes --enabled false
+crewterm --state-dir $state plugin-remove crewterm.workspace-notes
 ```
 
 安装默认停用，也可明确指定 `plugin-install --enabled true`。`plugin-enable ID --enabled false` 用于停用，没有单独的 `plugin-disable` 命令。移除只撤销注册，不删除本地程序、脚本或插件产生的文件。已安装启用的命令出现在界面的 F9 面板；`Plugins: Inspect local manifest` 可以检查实际来源与声明。
 
 ```powershell
-.\crewterm.exe --state-dir $state plugin-event --event session.created `
+crewterm --state-dir $state plugin-event --event session.created `
     --json '{"sessionId":"example-session"}'
 ```
 
@@ -176,13 +181,13 @@ $payload = @{ workingDirectory = $project } | ConvertTo-Json -Compress
 `run` 适合构建、测试和其他无需交互的 Shell 命令。任务的标准输入已关闭；需要输入或审批的 Agent 应使用交互式终端会话。`run` 提交后立即返回任务 ID，任务由 daemon 继续执行。
 
 ```powershell
-$started = .\crewterm.exe --state-dir $state run `
+$started = crewterm --state-dir $state run `
     --command 'dotnet test -c Release' --project $project --name 'Release tests' |
     ConvertFrom-Json
 $taskId = $started.SessionId
 
-.\crewterm.exe --state-dir $state tasks
-.\crewterm.exe --state-dir $state task $taskId
+crewterm --state-dir $state tasks
+crewterm --state-dir $state task $taskId
 ```
 
 `tasks` 返回 JSON 的 `Tasks` 数组，列出任务摘要，摘要中的 `Output` 为空。`task ID` 返回 JSON 的 `Task` 对象，包含 `Completed`、`ExitCode`、`Cancelled`、`Output` 和 `Error`。输出保留最多 262144 个字符的末尾内容。
@@ -192,7 +197,7 @@ $taskId = $started.SessionId
 ```powershell
 do {
     Start-Sleep -Milliseconds 200
-    $status = (.\crewterm.exe --state-dir $state task $taskId | ConvertFrom-Json).Task
+    $status = (crewterm --state-dir $state task $taskId | ConvertFrom-Json).Task
 } while (-not $status.Completed)
 
 $status.Output
@@ -206,7 +211,7 @@ CLI 自身退出码 `0` 表示请求成功处理。它并不表示后台任务�
 取消仍在执行或排队的任务：
 
 ```powershell
-.\crewterm.exe --state-dir $state cancel $taskId
+crewterm --state-dir $state cancel $taskId
 ```
 
 取消会请求终止任务进程树；再次查询 `task ID`，等待 `Completed` 并检查 `Cancelled`。已经完成或不存在的任务无法取消。当前 CLI 没有单独的 pipeline 子命令。
@@ -224,7 +229,7 @@ CLI 自身退出码 `0` 表示请求成功处理。它并不表示后台任务�
 | `stop` | 停止该状态目录的 daemon、所有终端和后台任务；daemon 未运行时只提示 “not running”，不会先启动一个再停止 |
 
 ```powershell
-.\crewterm.exe --state-dir $state stop
+crewterm --state-dir $state stop
 ```
 
 daemon 停止时等待任务取消并记录最终结果。重启后可读取已保存的完成任务历史；默认最多保留 100 条。正在运行的进程和终端屏幕不会跨 daemon 重启或系统重启恢复；持久目录中的原生对话可以按已登记身份显式续接。F10 Detach 不会执行 `stop`。
@@ -232,8 +237,9 @@ daemon 停止时等待任务取消并记录最终结果。重启后可读取已�
 ## 排查问题
 
 - 找不到 Agent：先运行 `doctor` 检查实际程序路径，安装或修正 PATH 后再启动会话。
-- 项目里的脚本无法作为终端命令启动：命令开头的裸程序名（如 `build.cmd`）只在 PATH 中查找，不会查找项目目录，防止打开不受信任的仓库时执行其中同名的程序；运行项目内脚本请写成 `.\build.cmd` 或绝对路径。
-- 会话内的 cmd 找不到项目里的脚本：CrewTerm 启动的终端设置了 `NoDefaultCurrentDirectoryInExePath=1`，cmd.exe 不再从当前目录查找程序（与 PowerShell 的行为一致），以免 Agent 的 npm 启动脚本执行仓库中植入的 `node.bat`。在终端里请输入 `.\build.cmd`。
+- 项目里的脚本无法作为终端命令启动：命令开头的裸程序名（如 `build.cmd`、`build.sh`）只在 PATH 的绝对路径条目中查找，不会查找项目目录，防止打开不受信任的仓库时执行其中同名的程序；运行项目内脚本请写成 `.\build.cmd`、`./build.sh` 或绝对路径。Linux / macOS 上脚本还需要执行权限（`chmod +x build.sh`）。
+- Windows 会话内的 cmd 找不到项目里的脚本：CrewTerm 启动的终端设置了 `NoDefaultCurrentDirectoryInExePath=1`，cmd.exe 不再从当前目录查找程序（与 PowerShell 的行为一致），以免 Agent 的 npm 启动脚本执行仓库中植入的 `node.bat`。在终端里请输入 `.\build.cmd`。
+- Linux / macOS 上原生恢复显示需要登记恢复命令：启动命令含 `$`、反引号、反斜杠、引号外的单引号或 `;` 等 Shell 语法时，CrewTerm 无法可靠改写它，请用 `session-bind --resume-command` 登记完整的恢复命令。
 - 相对路径：`--project`、`--path` 的相对路径按执行 CLI 时的当前目录解析；daemon 只接受绝对路径。
 - 命令缺少目标：`send`、`read`、`close`、`task`、`cancel` 等需要会话或任务 ID 的命令缺少 ID 时直接报参数错误，不会连接或启动 daemon。
 - 查询不到会话或任务：确认每条命令的 `--state-dir` 相同，并核对使用的是会话 ID 还是任务 ID。
@@ -242,6 +248,6 @@ daemon 停止时等待任务取消并记录最终结果。重启后可读取已�
 - 新命令提示旧协议：先完成旧 daemon 的工作，明确 stop 后再启动新版；不要把换了客户端当成后台已升级。
 - 原生恢复不可用：查看 `CanResume` 和 `ResumeReason`，确认精确 ID 是否已捕获、原命令是否存在歧义；必要时绑定完整恢复命令。
 - Agent 状态不明确：查看 `Activity.Source` 和 `Reason`。provider 自动 hook 可能因已有配置被保留而未连接；普通输出不能证明完成。
-- 插件没运行：检查启用状态、manifest 来源、`plugin-history` 中的错误及实际解释器是否在 PATH；示例使用系统自带的 Windows PowerShell（`powershell.exe -ExecutionPolicy Bypass`），无需另装 PowerShell 7。
+- 插件没运行：检查启用状态、manifest 来源、`plugin-history` 中的错误及实际解释器是否在 PATH；示例插件默认使用 PowerShell 7（`pwsh`，Linux / macOS 上需要安装），Windows 上通过 `windows` 替代调用改用系统自带的 Windows PowerShell，无需另装。
 
-基础 CLI 与 0.2 Agent/native/plugin 集成测试使用构建后的 `crewterm.exe`、独立临时状态目录、真实 Shell/ConPTY 和可控 provider fixture；不会通过付费 AI 提示验证模型历史。来源及最终发布验收见 [功能矩阵](v02-features.md)。
+基础 CLI 与 Agent/native/plugin 集成测试使用构建后的 `crewterm`、独立临时状态目录、真实 Shell 与伪终端和可控 provider fixture，并在 Windows、Linux 与 macOS 上运行；不会通过付费 AI 提示验证模型历史。来源及最终发布验收见 [功能矩阵](v02-features.md)。

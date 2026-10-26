@@ -12,5 +12,6 @@
     <Project Path="tests/CrewTerm.Workspace.Tests/CrewTerm.Workspace.Tests.csproj" />
     <Project Path="tests/CrewTerm.Automation.Tests/CrewTerm.Automation.Tests.csproj" />
     <Project Path="tests/CrewTerm.App.Tests/CrewTerm.App.Tests.csproj" />
+    <Project Path="tests/CrewTerm.Testing/CrewTerm.Testing.csproj" />
   </Folder>
 </Solution>

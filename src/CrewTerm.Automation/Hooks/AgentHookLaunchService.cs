@@ -82,13 +82,15 @@ public static class AgentHookLaunchService
     /// 判断路径是否不能安全地嵌入命令行的双引号中。
     /// </summary>
     /// <remarks>
-    /// npm 安装的 Provider CLI 是 <c>.cmd</c> 脚本，会经 <c>cmd.exe</c> 启动；
-    /// <c>%</c> 和 <c>!</c> 在 cmd 中即使位于引号内也可能触发变量展开，<c>"</c> 会提前结束引号，
-    /// 换行与 NUL 会截断命令；含有这些字符的路径一律视为不安全。
+    /// <para>Windows：npm 安装的 Provider CLI 是 <c>.cmd</c> 脚本，会经 <c>cmd.exe</c> 启动；
+    /// <c>%</c> 和 <c>!</c> 在 cmd 中即使位于引号内也可能触发变量展开。</para>
+    /// <para>Linux / macOS：命令经 <c>/bin/sh</c> 执行，双引号内的 <c>$</c>、反引号与反斜杠仍会被 Shell 解释。</para>
+    /// <para>两个平台上 <c>"</c> 都会提前结束引号，换行与 NUL 会截断命令；含有这些字符的路径一律视为不安全。</para>
     /// </remarks>
     /// <param name="path">要嵌入命令行的路径。</param>
-    /// <returns>含有上述任一字符时返回 <see langword="true"/>。</returns>
-    private static bool UnsafeShellPath(string path) => path.IndexOfAny(['%', '!', '"', '\r', '\n', '\0']) >= 0;
+    /// <returns>含有当前平台任一不安全字符时返回 <see langword="true"/>。</returns>
+    private static bool UnsafeShellPath(string path)
+        => path.IndexOfAny(OperatingSystem.IsWindows() ? ['%', '!', '"', '\r', '\n', '\0'] : ['$', '`', '\\', '"', '\r', '\n', '\0']) >= 0;
 
     /// <summary>
     /// 检查 Codex 用户级与 profile 配置中是否已经配置了 <c>notify</c>；若有则返回不接入的原因。

@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 各测试项目共用的平台判定、测试 Shell 与夹具；不引用任何产品项目，Terminal 测试不会因此依赖上层程序集。 -->
+  <PropertyGroup><IsPackable>false</IsPackable><IsTestProject>false</IsTestProject></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.extensibility.core" Version="2.9.3" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

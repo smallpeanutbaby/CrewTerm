@@ -63,7 +63,8 @@ public sealed partial class WorkspaceWindow
         string? command, name;
         if (choice == available.Count)
         {
-            command = Dialogs.Prompt(application, "Custom terminal", "Command (agent CLI, shell or ssh)", "cmd.exe");
+            command = Dialogs.Prompt(application, "Custom terminal", "Command (agent CLI, shell or ssh)",
+                OperatingSystem.IsWindows() ? "cmd.exe" : Environment.GetEnvironmentVariable("SHELL") ?? "/bin/sh");
             if (string.IsNullOrWhiteSpace(command)) return;
             name = Dialogs.Prompt(application, "Terminal name", "Sidebar display name", command);
         }

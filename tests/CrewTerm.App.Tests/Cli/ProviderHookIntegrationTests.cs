@@ -8,9 +8,9 @@ using CrewTerm.Automation.Activity;
 namespace CrewTerm.App.Tests.Cli;
 
 /// <summary>
-/// 提供方钩子（Claude / Codex hook）的集成测试：以 <c>--server</c> 模式启动真实的 <c>crewterm.exe</c> daemon 进程，
+/// 提供方钩子（Claude / Codex hook）的集成测试：以 <c>--server</c> 模式启动真实的 <c>crewterm</c> 可执行文件 daemon 进程，
 /// 覆盖 <c>agent-hook</c> 协议的事件到状态映射与原生会话绑定、真实钩子可执行文件对提供方负载的处理、daemon 不存在时钩子的行为，
-/// 以及经 ConPTY 启动提供方时注入的钩子配置能被实际调用。
+/// 以及经伪终端启动提供方时注入的钩子配置能被实际调用。
 /// </summary>
 public sealed class ProviderHookIntegrationTests : IAsyncLifetime
 {
@@ -42,7 +42,7 @@ public sealed class ProviderHookIntegrationTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         Directory.CreateDirectory(state);
-        var start = new ProcessStartInfo(ResolveExecutable()) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = state };
+        var start = new ProcessStartInfo(CrewTermBuild.Executable) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = state };
         foreach (var arg in new[] { "--server", "--state-dir", state }) start.ArgumentList.Add(arg);
         // 只隔离子进程的环境：夹具生成的启动配置不得替换用户自己的 Codex notify 设置。
         start.Environment["CODEX_HOME"] = Directory.CreateDirectory(Path.Combine(state, "isolated-codex")).FullName;
@@ -64,7 +64,7 @@ public sealed class ProviderHookIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task HookBindsExactConversationAndIgnoresStaleIdentityOrClosedTerminal()
     {
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state, Provider: "claude"));
+        var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state, Provider: "claude"));
         Assert.True(created.Ok, created.Error);
         // 以 claude 提供方向当前会话发送一次 agent-hook 请求，负载包含钩子事件名和原生会话标识（默认为 NativeId）。
         async Task<DaemonResponse> Hook(string eventName, string nativeId = NativeId) => await Client.CallAsync(new("agent-hook", created.SessionId,
@@ -95,7 +95,7 @@ public sealed class ProviderHookIntegrationTests : IAsyncLifetime
     [InlineData("codex")]
     public async Task ActualHookExecutableConsumesProviderPayloadSilently(string provider)
     {
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state, Provider: provider));
+        var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state, Provider: provider));
         var payload = provider == "claude"
             ? JsonSerializer.Serialize(new { hook_event_name = "Stop", session_id = NativeId })
             : JsonSerializer.Serialize(new Dictionary<string, string> { ["type"] = "agent-turn-complete", ["thread-id"] = NativeId });
@@ -123,19 +123,18 @@ public sealed class ProviderHookIntegrationTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// 验证：以伪造的 <c>claude.cmd</c> / <c>codex.cmd</c> 经 ConPTY 启动会话时，daemon 注入的启动配置（claude 的 <c>--settings</c> 钩子文件与 <c>--session-id</c>，codex 的 <c>notify=</c> 配置）
+    /// 验证：以伪造的 <c>claude</c> / <c>codex</c> 启动脚本经伪终端启动会话时，daemon 注入的启动配置（claude 的 <c>--settings</c> 钩子文件与 <c>--session-id</c>，codex 的 <c>notify=</c> 配置）
     /// 能被提供方脚本解析并实际调用钩子程序：钩子进程退出码 0 且没有任何输出，会话状态变为来源 <c>hook</c> 的 Done，记录正确的原生会话标识并且可以恢复。
     /// </summary>
     /// <param name="provider">提供方名称：<c>claude</c> 或 <c>codex</c>。</param>
     [Theory]
     [InlineData("claude")]
     [InlineData("codex")]
-    public async Task RealConPtyLaunchConfigInvokesHookExeAndCapturesNativeState(string provider)
+    public async Task RealTerminalLaunchConfigInvokesHookAndCapturesNativeState(string provider)
     {
-        var fixture = Path.Combine(Directory.CreateDirectory(Path.Combine(state, "fixture tools")).FullName, provider + ".cmd");
         var script = Path.Combine(state, "invoke provider hook.ps1");
         PowerShellFixture.WriteScript(script, FixtureScript);
-        File.WriteAllText(fixture, "@echo off\r\n" + PowerShellFixture.CommandLine(script) + " %*\r\n");
+        var fixture = TestShell.WriteLauncher(Directory.CreateDirectory(Path.Combine(state, "fixture tools")).FullName, provider, PowerShellFixture.CommandLine(script));
         var created = await Client.CallAsync(new("create", Command: "\"" + fixture + "\"", WorkingDirectory: state, Provider: provider));
         Assert.True(created.Ok, created.Error);
         var resultFile = Path.Combine(state, "hook-result.json");
@@ -210,7 +209,7 @@ public sealed class ProviderHookIntegrationTests : IAsyncLifetime
     /// <returns>退出码、标准输出和标准错误。</returns>
     private async Task<(int ExitCode, string Output, string Error)> InvokeHookAsync(string provider, string id, string payload, bool stdin, string? stateOverride = null)
     {
-        var start = new ProcessStartInfo(ResolveExecutable())
+        var start = new ProcessStartInfo(CrewTermBuild.Executable)
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
             RedirectStandardInput = true, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
@@ -225,19 +224,6 @@ public sealed class ProviderHookIntegrationTests : IAsyncLifetime
         try { await Task.WhenAll(process.WaitForExitAsync(), output, error).WaitAsync(TimeSpan.FromSeconds(8)); }
         catch { if (!process.HasExited) process.Kill(true); throw; }
         return (process.ExitCode, await output, await error);
-    }
-
-    /// <summary>
-    /// 确定被测可执行文件：优先使用环境变量 <c>CREWTERM_TEST_EXE</c>；否则从测试输出目录向上找到包含 <c>CrewTerm.slnx</c> 的仓库根目录，
-    /// 再拼出与测试程序集相同构建配置下的 <c>src\CrewTerm.App\bin\&lt;配置&gt;\net10.0\crewterm.exe</c>。
-    /// </summary>
-    /// <returns>可执行文件的完整路径。</returns>
-    private static string ResolveExecutable()
-    {
-        if (Environment.GetEnvironmentVariable("CREWTERM_TEST_EXE") is { } published) return published;
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "CrewTerm.slnx"))) directory = directory.Parent;
-        return Path.Combine(directory!.FullName, "src", "CrewTerm.App", "bin", new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name, "net10.0", "crewterm.exe");
     }
 
     /// <summary>

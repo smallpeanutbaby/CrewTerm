@@ -28,7 +28,7 @@ public sealed class DaemonTaskServiceTests : IDisposable
     public async Task TaskContinuesWithoutCallerAndCompletedRunReopensFromHistory()
     {
         using var service = new DaemonTaskService(root);
-        var command = OperatingSystem.IsWindows() ? "echo started & ping -n 2 127.0.0.1 >nul & echo finished" : "echo started; sleep 1; echo finished";
+        var command = TestShell.Sequence("echo started", TestShell.Sleep(1), "echo finished");
         var id = service.Start(new("persistent", command, root));
         var running = await WaitForAsync(service, id, info => info.Output.Contains("started"));
         Assert.False(running.Completed);
@@ -50,7 +50,7 @@ public sealed class DaemonTaskServiceTests : IDisposable
     public async Task CancelStopsAnActiveTaskAndRecordsCancellation()
     {
         using var service = new DaemonTaskService(root);
-        var command = OperatingSystem.IsWindows() ? "echo started & ping -n 60 127.0.0.1 >nul" : "echo started; sleep 60";
+        var command = TestShell.Sequence("echo started", TestShell.Sleep(59));
         var id = service.Start(new("cancel", command, root));
         await WaitForAsync(service, id, info => info.Output.Contains("started"));
         Assert.True(service.Cancel(id));
@@ -82,7 +82,7 @@ public sealed class DaemonTaskServiceTests : IDisposable
     public async Task StopCancelsRunningAndQueuedTasksBeforeAnyQueuedSideEffect()
     {
         using var service = new DaemonTaskService(root, maximumConcurrency: 1);
-        var command = OperatingSystem.IsWindows() ? "echo started & ping -n 60 127.0.0.1 >nul" : "echo started; sleep 60";
+        var command = TestShell.Sequence("echo started", TestShell.Sleep(59));
         var first = service.Start(new("first", command, root));
         await WaitForAsync(service, first, info => info.Output.Contains("started"));
         var second = service.Start(new("second", "echo bad > should-not-run", root));

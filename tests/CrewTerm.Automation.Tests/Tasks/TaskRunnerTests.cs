@@ -1,5 +1,4 @@
 using CrewTerm.Automation.Tasks;
-using CrewTerm.Automation.Tests.Fixtures;
 
 namespace CrewTerm.Automation.Tests.Tasks;
 
@@ -140,13 +139,12 @@ public sealed class TaskRunnerTests : IDisposable
     }
 
     /// <summary>
-    /// 验证（仅 Windows，其他平台直接返回）：带引号的、路径含空格的 <c>.cmd</c> 脚本与带引号的含空格参数原样传给 Shell，
+    /// 验证（Windows）：带引号的、路径含空格的 <c>.cmd</c> 脚本与带引号的含空格参数原样传给 Shell，
     /// 脚本收到完整参数 <c>a b</c> 并以退出码 0 结束。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public async Task QuotedExecutableAndArgumentWithSpacesRunUnchanged()
     {
-        if (!OperatingSystem.IsWindows()) return;
         var directory = Directory.CreateDirectory(Path.Combine(root, "commands with spaces")).FullName;
         var script = Path.Combine(directory, "show argument.cmd");
         File.WriteAllText(script, "@echo off\r\necho [%~1]\r\n", System.Text.Encoding.ASCII);

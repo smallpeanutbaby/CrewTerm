@@ -83,7 +83,7 @@ public sealed class DaemonPluginProtocolTests : IAsyncLifetime
     {
         var directory = CreatePlugin("$json = [Console]::In.ReadToEnd(); [IO.File]::WriteAllText((Join-Path $pwd 'received.json'), $json)", "agent.state");
         Assert.True((await Client.CallAsync(new("plugin-install", Path: directory, Enabled: true))).Ok);
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state));
+        var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state));
         Assert.True((await Client.CallAsync(new("agent-report", created.SessionId, State: AgentActivityState.Done, Reason: "Finished work"))).Ok);
         var path = Path.Combine(directory, "received.json");
         var deadline = DateTime.UtcNow.AddSeconds(8);
@@ -139,11 +139,11 @@ public sealed class DaemonPluginProtocolTests : IAsyncLifetime
         Assert.True((await Client.CallAsync(new("plugin-install", Path: directory, Enabled: true))).Ok);
         var disabled = CreatePlugin("$json = [Console]::In.ReadToEnd(); [IO.File]::WriteAllText((Join-Path $pwd 'received.json'), $json)", eventName, id: "disabled");
         Assert.True((await Client.CallAsync(new("plugin-install", Path: disabled, Enabled: false))).Ok);
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state));
+        var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state));
         if (eventName == "session.exited") await Client.CallAsync(new("close", created.SessionId));
         if (eventName == "message.received")
         {
-            var target = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state));
+            var target = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state));
             await Client.CallAsync(new("message-send", FromSessionId: created.SessionId, TargetSessionId: target.SessionId, Text: "Event message"));
         }
         var path = Path.Combine(directory, "received.json");

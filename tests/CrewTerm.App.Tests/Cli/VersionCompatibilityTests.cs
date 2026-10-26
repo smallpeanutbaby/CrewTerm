@@ -11,7 +11,7 @@ using CrewTerm.App.Tests.Fixtures;
 namespace CrewTerm.App.Tests.Cli;
 
 /// <summary>
-/// 版本与协议兼容性测试：以真实进程运行 <c>crewterm.exe</c>、在测试进程内运行真实的 <see cref="DaemonHost"/>，或在命名管道上模拟 0.1.0 版旧 daemon，
+/// 版本与协议兼容性测试：以真实进程运行 <c>crewterm</c> 可执行文件、在测试进程内运行真实的 <see cref="DaemonHost"/>，或在命名管道上模拟 0.1.0 版旧 daemon，
 /// 验证版本信息的展示、<c>ping</c> 响应中的版本与协议号，以及 CLI 连接旧 daemon 时的降级与提示行为。
 /// </summary>
 public sealed class VersionCompatibilityTests : IAsyncLifetime
@@ -22,9 +22,9 @@ public sealed class VersionCompatibilityTests : IAsyncLifetime
     private readonly string state = Path.Combine(Path.GetTempPath(), "CrewTermVersionTests", Guid.NewGuid().ToString("N"));
 
     /// <summary>
-    /// 被测 <c>crewterm.exe</c> 的完整路径。
+    /// 被测 <c>crewterm</c> 可执行文件 的完整路径。
     /// </summary>
-    private readonly string executable = ResolveExecutable();
+    private readonly string executable = CrewTermBuild.Executable;
 
     /// <summary>
     /// 在每个测试开始前创建状态目录。
@@ -154,19 +154,6 @@ public sealed class VersionCompatibilityTests : IAsyncLifetime
         try { await Task.WhenAll(process.WaitForExitAsync(), output, error).WaitAsync(TimeSpan.FromSeconds(15)); }
         catch { if (!process.HasExited) process.Kill(true); throw; }
         return (process.ExitCode, await output, await error);
-    }
-
-    /// <summary>
-    /// 确定被测可执行文件：优先使用环境变量 <c>CREWTERM_TEST_EXE</c>；否则从测试输出目录向上找到包含 <c>CrewTerm.slnx</c> 的仓库根目录，
-    /// 再拼出与测试程序集相同构建配置下的 <c>src\CrewTerm.App\bin\&lt;配置&gt;\net10.0\crewterm.exe</c>。
-    /// </summary>
-    /// <returns>可执行文件的完整路径。</returns>
-    private static string ResolveExecutable()
-    {
-        if (Environment.GetEnvironmentVariable("CREWTERM_TEST_EXE") is { } published) return published;
-        var root = new DirectoryInfo(AppContext.BaseDirectory);
-        while (root is not null && !File.Exists(Path.Combine(root.FullName, "CrewTerm.slnx"))) root = root.Parent;
-        return Path.Combine(root!.FullName, "src", "CrewTerm.App", "bin", new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name, "net10.0", "crewterm.exe");
     }
 
     /// <summary>

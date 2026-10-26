@@ -8,7 +8,7 @@ using CrewTerm.App.Tests.Fixtures;
 namespace CrewTerm.App.Tests.Cli;
 
 /// <summary>
-/// 以真实进程运行 <c>crewterm.exe</c> 的基础命令行端到端测试：每条命令都通过 <c>--state-dir</c> 指向本测试独占的临时状态目录，
+/// 以真实进程运行 <c>crewterm</c> 可执行文件 的基础命令行端到端测试：每条命令都通过 <c>--state-dir</c> 指向本测试独占的临时状态目录，
 /// 并以含空格和中文的项目目录为工作目录，覆盖帮助/版本/诊断、跨进程的终端会话生命周期、后台任务以及参数错误的退出码与错误输出。
 /// </summary>
 public sealed class CliIntegrationTests : IAsyncLifetime
@@ -19,30 +19,14 @@ public sealed class CliIntegrationTests : IAsyncLifetime
     private readonly string state = Path.Combine(Path.GetTempPath(), "CrewTermCliTests", Guid.NewGuid().ToString("N"));
 
     /// <summary>
-    /// 被测 <c>crewterm.exe</c> 的完整路径。
+    /// 被测 <c>crewterm</c> 可执行文件 的完整路径。
     /// </summary>
-    private readonly string executable;
+    private readonly string executable = CrewTermBuild.Executable;
 
     /// <summary>
     /// 状态目录下名为 <c>project with spaces 项目</c> 的项目目录，用来验证路径中的空格和非 ASCII 字符被原样传递；同时是 CLI 子进程的工作目录。
     /// </summary>
     private string Project => Path.Combine(state, "project with spaces 项目");
-
-    /// <summary>
-    /// 定位被测可执行文件：优先使用环境变量 <c>CREWTERM_TEST_EXE</c>；否则从测试输出目录向上查找包含 <c>CrewTerm.slnx</c> 的仓库根目录，
-    /// 并按测试程序集的构建配置拼出 <c>src\CrewTerm.App\bin\&lt;配置&gt;\net10.0\crewterm.exe</c>。
-    /// </summary>
-    /// <exception cref="DirectoryNotFoundException">找不到仓库根目录时抛出。</exception>
-    public CliIntegrationTests()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "CrewTerm.slnx")))
-            directory = directory.Parent;
-        var repository = directory?.FullName ?? throw new DirectoryNotFoundException("Source repository not found");
-        var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
-        executable = Environment.GetEnvironmentVariable("CREWTERM_TEST_EXE")
-            ?? Path.Combine(repository, "src", "CrewTerm.App", "bin", configuration, "net10.0", "crewterm.exe");
-    }
 
     /// <summary>
     /// 断言被测可执行文件已构建存在，并创建项目目录（连同状态目录）。
@@ -85,7 +69,7 @@ public sealed class CliIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task TerminalCanBeCreatedWrittenReadListedAndClosedAcrossCliProcesses()
     {
-        var created = ReadResponse(await RunAsync("new", "--command", "cmd.exe /d /q", "--project", Project, "--name", "CLI shell"));
+        var created = ReadResponse(await RunAsync("new", "--command", TestShell.Interactive, "--project", Project, "--name", "CLI shell"));
         Assert.False(string.IsNullOrWhiteSpace(created.SessionId));
         var id = created.SessionId!;
         var marker = "CLI_TERMINAL_" + Guid.NewGuid().ToString("N");
@@ -111,7 +95,7 @@ public sealed class CliIntegrationTests : IAsyncLifetime
     public async Task BackgroundCommandContinuesAfterCliExitAndExposesActualOutput()
     {
         var marker = "CLI_TASK_" + Guid.NewGuid().ToString("N");
-        var command = "echo " + marker + " & ping -n 2 127.0.0.1 >nul";
+        var command = TestShell.Sequence("echo " + marker, TestShell.Sleep(1));
         var started = ReadResponse(await RunAsync("run", "--command", command, "--project", Project, "--name", "CLI check"));
         Assert.False(string.IsNullOrWhiteSpace(started.SessionId));
         var id = started.SessionId!;
@@ -197,7 +181,7 @@ public sealed class CliIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task RelativeProjectIsResolvedAgainstTheCallersDirectory()
     {
-        var created = ReadResponse(await RunAsync("new", "--command", "cmd.exe /d /q", "--project", ".", "--name", "relative"));
+        var created = ReadResponse(await RunAsync("new", "--command", TestShell.Interactive, "--project", ".", "--name", "relative"));
         var session = Assert.Single(ReadResponse(await RunAsync("sessions")).Sessions!, item => item.Id == created.SessionId);
         Assert.Equal(Project, session.WorkingDirectory);
         ReadResponse(await RunAsync("close", created.SessionId!));

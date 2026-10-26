@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using CrewTerm.Automation.Agents;
 
 namespace CrewTerm.Automation.Tests.Agents;
@@ -20,9 +21,9 @@ public sealed class AgentCatalogTests : IDisposable
 
     /// <summary>
     /// 验证：在显式指定的、含空格的搜索目录中，按 <c>PATHEXT</c> 扩展名列表能找到不带扩展名指定的 <c>example.cmd</c>
-    /// （Windows 上路径比较不区分大小写）；不存在的程序返回 <see langword="null"/>。
+    /// （Windows 上路径比较不区分大小写）；不存在的程序返回 <see langword="null"/>。PATHEXT 只在 Windows 上生效。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public void LocatorFindsWindowsCommandShimsInPathsWithSpaces()
     {
         var bin = Directory.CreateDirectory(Path.Combine(root, "my tools")).FullName;
@@ -47,12 +48,30 @@ public sealed class AgentCatalogTests : IDisposable
         var unixShim = Path.Combine(bin, "example");
         var windowsShim = unixShim + ".cmd";
         File.WriteAllText(unixShim, "#!/bin/sh\n");
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(unixShim, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         File.WriteAllText(windowsShim, "@echo off\r\n");
 
         var found = ExecutableLocator.Find(absolutePath ? unixShim : "example", bin, ".EXE;.CMD");
 
         Assert.Equal(OperatingSystem.IsWindows() ? windowsShim : unixShim, found,
             ignoreCase: OperatingSystem.IsWindows());
+    }
+
+    /// <summary>
+    /// 验证（Linux / macOS）：没有执行权限的同名文件不会被当作程序，加上执行权限后才能找到，与 Shell 的查找规则一致。
+    /// </summary>
+    [UnixFact]
+    [UnsupportedOSPlatform("windows")]
+    public void LocatorRequiresExecutePermissionOnUnix()
+    {
+        var bin = Directory.CreateDirectory(Path.Combine(root, "unix tools")).FullName;
+        var program = Path.Combine(bin, "example");
+        File.WriteAllText(program, "#!/bin/sh\n");
+        File.SetUnixFileMode(program, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        Assert.Null(ExecutableLocator.Find("example", bin));
+        Assert.Null(ExecutableLocator.Find(program));
+        File.SetUnixFileMode(program, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        Assert.Equal(program, ExecutableLocator.Find("example", bin));
     }
 
     /// <summary>

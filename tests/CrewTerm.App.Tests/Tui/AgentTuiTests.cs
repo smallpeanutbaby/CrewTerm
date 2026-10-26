@@ -7,7 +7,7 @@ using static CrewTerm.App.Tests.Tui.LayoutTuiTests;
 namespace CrewTerm.App.Tests.Tui;
 
 /// <summary>
-/// Agent 协作界面的端到端测试：在伪控制台（ConPTY）中启动真实的 <c>crewterm</c> 工作区，连接到独立临时状态目录中的真实 daemon，
+/// Agent 协作界面的端到端测试：在伪终端中启动真实的 <c>crewterm</c> 工作区，连接到独立临时状态目录中的真实 daemon，
 /// 通过写入按键序列驱动 TUI，并用 <see cref="DaemonClient"/> 创建会话、上报状态和核对 daemon 中的消息与通知。
 /// </summary>
 public sealed class AgentTuiTests
@@ -19,7 +19,7 @@ public sealed class AgentTuiTests
     [Fact]
     public async Task CooperationMenusDeliverAndReadDirectedMessages()
     {
-        var root = Repository();
+        var root = CrewTermBuild.Repository;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermAgentUi", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(state);
         var client = new DaemonClient(state);
@@ -27,9 +27,9 @@ public sealed class AgentTuiTests
         {
             using var ui = Launch("agent-mail-ui", root, state);
             await Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
-            var a = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: root, Name: "Sender"));
+            var a = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Sender"));
             await Wait(() => ui.Screen.GetText().Contains("Sender  ·"), ui, "sender selected");
-            var b = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: root, Name: "Receiver"));
+            var b = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Receiver"));
             await Wait(() => Sidebar(ui).Contains("Receiver"), ui, "receiver available");
             await Command(ui, "Agent: Send message");
             await Wait(() => ui.Screen.GetText().Contains("Choose recipient"), ui, "recipient selection");
@@ -82,7 +82,7 @@ public sealed class AgentTuiTests
     [Fact]
     public async Task PriorityRefreshPreservesTheSelectedSessionIdentity()
     {
-        var root = Repository();
+        var root = CrewTermBuild.Repository;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermAgentUi", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(state);
         var client = new DaemonClient(state);
@@ -90,8 +90,8 @@ public sealed class AgentTuiTests
         {
             using var ui = Launch("agent-selection-ui", root, state);
             await Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
-            await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: root, Name: "First Agent"));
-            var b = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: root, Name: "Second Agent"));
+            await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "First Agent"));
+            var b = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Second Agent"));
             await Wait(() => Sidebar(ui).Contains("Second Agent"), ui, "sidebar loaded");
             ui.Write("\u001b5"); await Task.Delay(200); ui.Write("\u001b[B"); await Task.Delay(150);
             await client.CallAsync(new("agent-report", b.SessionId, State: AgentActivityState.Blocked, Source: "api", Reason: "Needs input"));
@@ -116,7 +116,7 @@ public sealed class AgentTuiTests
     [Fact]
     public async Task NotificationsPrioritizeBlockedAndAcknowledgeOnlySelectedAgent()
     {
-        var root = Repository();
+        var root = CrewTermBuild.Repository;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermAgentUi", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(state);
         var client = new DaemonClient(state);
@@ -124,8 +124,8 @@ public sealed class AgentTuiTests
         {
             using var ui = Launch("agent-state-ui", root, state);
             await Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
-            var a = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: root, Name: "Build A"));
-            var b = await client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: root, Name: "Review B"));
+            var a = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Build A"));
+            var b = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Review B"));
             Assert.True((await client.CallAsync(new("agent-report", a.SessionId, State: AgentActivityState.Done, Source: "api", Reason: "Build finished"))).Ok);
             Assert.True((await client.CallAsync(new("agent-report", b.SessionId, State: AgentActivityState.Blocked, Source: "api", Reason: "Approve review"))).Ok);
             await Wait(() => Sidebar(ui).Contains("[WAIT]") && Sidebar(ui).Contains("[DONE*]"), ui, "semantic sidebar states");
@@ -155,7 +155,7 @@ public sealed class AgentTuiTests
     /// <summary>
     /// 截取界面屏幕每一行的前 28 列（左侧会话侧栏所在区域），用于只针对侧栏内容做断言。
     /// </summary>
-    /// <param name="ui">运行工作区界面的伪控制台会话。</param>
+    /// <param name="ui">运行工作区界面的伪终端会话。</param>
     /// <returns>按行以换行符连接的侧栏文本。</returns>
-    private static string Sidebar(ConPtySession ui) => string.Join('\n', ui.Screen.GetText().Split('\n').Select(line => line[..Math.Min(28, line.Length)]));
+    private static string Sidebar(ITerminalSession ui) => string.Join('\n', ui.Screen.GetText().Split('\n').Select(line => line[..Math.Min(28, line.Length)]));
 }

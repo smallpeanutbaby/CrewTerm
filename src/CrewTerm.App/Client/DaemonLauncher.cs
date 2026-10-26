@@ -28,7 +28,7 @@ internal static class DaemonLauncher
     internal static async Task<DaemonResponse> EnsureRunningAsync(string stateDirectory)
     {
         if (await TryPingAsync(stateDirectory) is { } running) return running;
-        Directory.CreateDirectory(stateDirectory);
+        StateFiles.EnsureDirectory(stateDirectory);
         var processPath = Environment.ProcessPath ?? throw new InvalidOperationException("Executable path unavailable");
         var arguments = new List<string>();
         // 以 “dotnet crewterm.dll” 运行时（测试与开发环境），daemon 也要用同一个程序集启动。

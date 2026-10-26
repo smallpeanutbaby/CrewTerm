@@ -5,7 +5,7 @@ namespace CrewTerm.Automation.Tests.Plugins;
 
 /// <summary>
 /// 端到端验证仓库随附的示例插件 <c>examples/plugins/workspace-notes</c> 确实可用：把它复制到临时目录安装，
-/// 再通过 <see cref="LocalPluginRunner"/> 以真实的 PowerShell 进程运行其命令和事件 hook，检查输出与写出的文件。
+/// 再通过 <see cref="LocalPluginRunner"/> 以真实的 PowerShell 进程（Windows 上为系统自带的 Windows PowerShell，其他平台为 <c>pwsh</c>）运行其命令和事件 hook，检查输出与写出的文件。
 /// </summary>
 public sealed class LocalPluginSampleTests : IDisposable
 {

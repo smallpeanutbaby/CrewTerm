@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>crewterm</AssemblyName><RootNamespace>CrewTerm.App</RootNamespace><Version>0.2.0</Version></PropertyGroup>
+  <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>crewterm</AssemblyName><RootNamespace>CrewTerm.App</RootNamespace><Version>0.3.0</Version></PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Terminal.Gui.Editor" Version="2.5.7" />
     <ProjectReference Include="../CrewTerm.Core/CrewTerm.Core.csproj" />

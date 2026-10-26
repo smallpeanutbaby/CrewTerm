@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    name: Package (${{ matrix.rid }})
+    needs: ci
+    # 每个平台在对应系统上发布：macOS 的启动程序需要在 macOS 上完成签名，否则 Apple Silicon 会拒绝运行。
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64 }
+          - { os: windows-latest, rid: win-arm64 }
+          - { os: ubuntu-latest, rid: linux-x64 }
+          - { os: ubuntu-latest, rid: linux-arm64 }
+          - { os: macos-latest, rid: osx-arm64 }
+          - { os: macos-latest, rid: osx-x64 }
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Publish
+        shell: pwsh
+        run: ./scripts/publish.ps1 -Runtime ${{ matrix.rid }}
+
+      # Windows 打包为 zip；Linux / macOS 打包为 tar.gz 以保留可执行权限。
+      - name: Archive
+        shell: pwsh
+        run: |
+          $name = "crewterm-${{ github.ref_name }}-${{ matrix.rid }}"
+          if ('${{ matrix.rid }}'.StartsWith('win-')) {
+            Compress-Archive -Path 'artifacts/${{ matrix.rid }}/*' -DestinationPath "$name.zip"
+          } else {
+            tar -czf "$name.tar.gz" -C 'artifacts/${{ matrix.rid }}' .
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.rid }}
+          path: crewterm-*
+          if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+          pattern: package-*
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" packages/*
+          --repo "$GITHUB_REPOSITORY" --title "CrewTerm $GITHUB_REF_NAME" --generate-notes --verify-tag

@@ -1,13 +1,13 @@
 # CrewTerm 架构与分层
 
-本文描述 CrewTerm 0.2.x 的分层、依赖规则、工程规范、进程与线程模型、持久化策略和代码注释规范，
-并记录 2026-10-26 两轮架构审查的结论。
+本文描述 CrewTerm 0.3.x 的分层、依赖规则、工程规范、跨平台设计、进程与线程模型、持久化策略和代码注释规范，
+并记录 2026-10-26 各轮架构审查的结论。CrewTerm 支持 Windows、Linux 与 macOS。
 
 ## 1. 分层与依赖规则
 
 ```
                  ┌──────────────────────────────────────────────┐
-                 │  CrewTerm.App  (crewterm.exe)                 │
+                 │  CrewTerm.App  (crewterm)                     │
                  │   ├─ Program / CliCommands / CrewTermHelp      │
                  │   ├─ UI/      Terminal.Gui 工作台界面           │
                  │   └─ Server/  daemon、命名管道协议、任务与插件服务│
@@ -15,7 +15,7 @@
                          │           │           │
           ┌──────────────▼──┐ ┌──────▼───────┐ ┌─▼────────────────┐
           │ CrewTerm.Terminal│ │ CrewTerm.    │ │ CrewTerm.         │
-          │ ConPTY + VT 屏幕 │ │ Workspace    │ │ Automation        │
+          │ 伪终端 + VT 屏幕 │ │ Workspace    │ │ Automation        │
           │ （无项目依赖）   │ │ 文件/Git/检查点│ │ 任务/Agent/插件/原生会话│
           └──────────────────┘ └──────┬───────┘ └──┬───────────────┘
                                       │            │
@@ -32,8 +32,9 @@
 2. **Core 是唯一的基础设施层。** 路径比较与包含判断（`FileSystemPath`）、原子读写（`AtomicFile`）、JSON 状态文件
    （`AtomicJsonStore`）和状态目录命名（`StateFiles`）只在 Core 中实现一次，其他层不得再复制一份，
    也不得在代码中直接书写状态文件名。
-3. **业务层不依赖 UI 框架与原生句柄。** Terminal.Gui 只出现在 `App/UI`；ConPTY P/Invoke 只出现在 `Terminal/Native`；
-   daemon 进程启动的 P/Invoke 只出现在 `App/Server/DetachedProcess` 与 `App/Server/Native`。
+3. **业务层不依赖 UI 框架与原生句柄。** Terminal.Gui 只出现在 `App/UI`；伪终端的 P/Invoke（Windows ConPTY 与 Unix libc）
+   只出现在 `Terminal/Native`；daemon 进程启动的 P/Invoke 只出现在 `App/Client/DetachedProcess` 与 `App/Client/Native`。
+   平台差异收敛在少数入口（`TerminalSession`、`TerminalCommand`、`DetachedProcess`、`PipeProtocol`），上层代码只面对 `ITerminalSession`。
 4. **与 UI 无关的交互逻辑放在可单测的小类中**，例如 `TerminalInput`、`TerminalMouse`、`SessionInputDispatcher`、
    `TerminalResizeCoordinator`、`SessionRefreshGate`、`CommandPalette`、`WorkspaceNavigation`；
    `WorkspaceWindow` 只负责组装与界面事件，项目切换时“是否需要先处理未保存编辑”的规则由 `WorkspaceNavigation` 判定。
@@ -47,13 +48,16 @@
 - **项目内按职责分文件夹，命名空间与文件夹一致**（`src/CrewTerm.Core/IO/AtomicFile.cs` 的命名空间是 `CrewTerm.Core.IO`），
   由 `.editorconfig` 的 IDE0130 在构建时强制检查。文件夹名避开会与类型、成员或其他命名空间冲突的名字
   （例如不用 `Screen`、`Layout`、`Text`、`Terminal`、`Workspace`）。测试项目的文件夹与被测项目一一对应，共用夹具放在 `Fixtures/`。
-- P/Invoke 声明与 Win32 结构体放在 `Native` 子命名空间（`CrewTerm.Terminal.Native`、`CrewTerm.App.Client.Native`），
-  标志位与属性号使用具名常量，不在调用处书写魔法数字。
+- P/Invoke 声明与原生结构体放在 `Native` 子命名空间（`CrewTerm.Terminal.Native`、`CrewTerm.App.Client.Native`），
+  标志位、请求号与信号编号使用具名常量（按平台取值的放在属性中），不在调用处书写魔法数字。
+- 只在某个平台可用的类型与成员标注 `[SupportedOSPlatform]`，调用处用 `OperatingSystem.IsWindows()` 等判断保护；
+  平台兼容性分析（CA1416）在“警告即错误”下由构建强制检查。
 - `Directory.Build.props` 统一 `net10.0`、可空引用、警告即错误，并为所有项目生成 XML 文档：缺少注释（CS1591）、注释格式或 cref 错误（CS1570–CS1574）、
   未使用的 `using`（IDE0005）与命名空间和文件夹不一致（IDE0130）都会使构建失败，规范由编译器强制执行。
-- 测试中以真实进程运行的 PowerShell 夹具统一使用 `tests/CrewTerm.Automation.Tests/Fixtures/PowerShellFixture.cs`
-  （App.Tests 以链接方式共用同一源文件）：优先 PowerShell 7，没有时退回系统自带的 Windows PowerShell 5.1，
-  测试不依赖额外安装的运行时。
+- 各测试项目共用 `tests/CrewTerm.Testing`（不引用任何产品项目）：平台限定的测试特性（`WindowsFact`、`UnixFact` 等）、
+  按平台选择的测试 Shell 与伪造程序（`TestShell`）、PowerShell 夹具（优先 `pwsh`，Windows 上没有时退回系统自带的 Windows PowerShell 5.1）、
+  被测可执行文件定位（`CrewTermBuild`）与条件等待（`Poll`）。跨平台行为写成普通测试，平台专有行为使用平台限定特性，
+  不在测试中提前返回。
 
 ## 3. 项目结构与各层职责
 
@@ -66,10 +70,10 @@ src/
 │  ├─ Layouts/               TerminalLayout、TerminalTab、LayoutNode、LayoutGeometry、LayoutRect、LayoutPlacement、SplitAxis、SplitDirection
 │  ├─ Editing/               CodeContext、FileReferenceParser、FileLocation
 │  └─ Security/              DisplayText、TerminalPaste
-├─ CrewTerm.Terminal/        伪控制台与 VT 屏幕（不依赖任何项目）
-│  ├─ Pty/                   ConPtySession、TerminalCommand
+├─ CrewTerm.Terminal/        伪终端与 VT 屏幕（不依赖任何项目）
+│  ├─ Pty/                   ITerminalSession、TerminalSession（平台工厂）、ConPtySession（Windows）、UnixPtySession 与 ChildProcessBlock（Linux / macOS）、TerminalCommand
 │  ├─ Emulation/             TerminalScreen（Parser/Operations/Colors/Resize 分部类）、TerminalSnapshot、TerminalCell、ScreenBufferState、VtParseState
-│  └─ Native/                ConPtyNative 与 Win32 结构体
+│  └─ Native/                ConPtyNative 与 Win32 结构体；UnixPtyNative 与 WindowSize（libc）
 ├─ CrewTerm.Workspace/       以项目根为边界的文件、编辑、Git、检查点（依赖 Core）
 │  ├─ Files/                 FileWorkspace、FileEntry、SearchResult、WorkspacePath
 │  ├─ Documents/             DocumentBuffer、FileConflictException
@@ -82,8 +86,8 @@ src/
 │  ├─ Activity/              AgentActivityStore（含 Mailbox 分部）、AgentActivity、AgentActivityState、AgentNotification、AgentMessage、AgentActivitySnapshot
 │  ├─ Hooks/                 AgentHookEvent、AgentHookLaunchService、AgentHookLaunch
 │  ├─ Providers/             ProviderSessionService、ProviderCommandLine、CommandToken、ProviderLaunchPlan、ProviderResumeCapability、NativeSessionStore、NativeSessionRecord
-│  └─ Plugins/               LocalPluginCatalog、LocalPluginRunner、LocalPluginManifest、LocalPluginCommand、LocalPluginHook、LocalPluginInfo、LocalPluginResult
-└─ CrewTerm.App/             crewterm.exe：组合全部模块
+│  └─ Plugins/               LocalPluginCatalog、LocalPluginRunner、LocalPluginManifest、LocalPluginCommand、LocalPluginPlatformCommand、LocalPluginHook、LocalPluginInfo、LocalPluginResult
+└─ CrewTerm.App/             crewterm 可执行程序：组合全部模块
    ├─ Program、CrewTermCommandLine、CrewTermHelp、CrewTermVersion   入口分派、启动选项、帮助文本、版本与协议兼容（各部分共用）
    ├─ Cli/                   CliCommands、AgentHookCli（非交互子命令）
    ├─ Client/                DaemonClient、DaemonLauncher、DetachedProcess、Native/（StartupInfo、ProcessInformation）
@@ -93,7 +97,8 @@ src/
       ├─ Windows/            WorkspaceWindow（Actions/Agents/Extensions/Layout/Mouse/Tools 分部类）
       ├─ Controls/           TerminalPane、TerminalLayoutView、PaneDivider、EditorBinding、Dialogs、CommandPalette、PaletteCommand
       └─ Input/              TerminalInput、TerminalMouse、SessionInputDispatcher、SessionRefreshGate、TerminalResizeCoordinator、ResizeSessionState、TerminalSize
-tests/                       与 src 一一对应：CrewTerm.<项目>.Tests/<同名文件夹>/，共用夹具在 Fixtures/；App.Tests 另有 Cli/、Server/、UI/、Tui/（端到端界面测试）
+tests/                       与 src 一一对应：CrewTerm.<项目>.Tests/<同名文件夹>/；App.Tests 另有 Cli/、Server/、UI/、Tui/（端到端界面测试）
+└─ CrewTerm.Testing/         共享测试支持：Platform/（平台限定特性、TestShell）、Fixtures/（PowerShellFixture、CrewTermBuild、Poll）
 ```
 
 App 内部同样只向下依赖：`UI` 与 `Cli` 通过 `Client` 访问 daemon，`Client` 与 `Server` 都只依赖 `Protocol`（消息类型与管道命名规则
@@ -106,20 +111,40 @@ Cli ─┴─► Client ─► Protocol ◄─ Server
 
 ## 4. 进程与线程模型
 
-- **UI 进程**：`crewterm`（默认子命令 `ui`）。首次需要时以 `--server` 启动 daemon（`DetachedProcess`，不继承句柄、
-  工作目录为程序所在目录）。UI 每 160 ms 后台轮询会话列表与屏幕（`screen` 请求带 `IncludeText: false`，只取单元格）；
+- **UI 进程**：`crewterm`（默认子命令 `ui`）。首次需要时以 `--server` 启动 daemon（`DetachedProcess`，不继承调用方的标准输入输出、
+  工作目录为程序所在目录；Linux / macOS 上 daemon 启动后再创建新会话并把标准输入输出改接到 `/dev/null`）。UI 每 160 ms 后台轮询会话列表与屏幕（`screen` 请求带 `IncludeText: false`，只取单元格）；
   所有界面更新通过 `application.Invoke` 回到 UI 线程，并用 `SessionRefreshGate` 丢弃用户切换选择之前发起的过期结果。
-- **daemon 进程**：每个状态目录一个（`server.lock` 独占），持有全部 ConPTY 会话、后台任务与插件执行；UI 分离（F10）或退出不影响它。
-  命名管道仅允许当前 Windows 用户，**一次连接一个请求、一行 JSON**，最多 16 个并发连接；消息按块读取，请求上限 128 Ki 字符、响应上限 8 Mi 字符。
-- **ConPTY 会话**：每个会话一个后台读取线程持续读取输出并喂给 `TerminalScreen`；终端查询回复在屏幕锁之外写回，
-  避免与 resize 发生锁顺序反转。进程挂起创建、加入 kill-on-close 作业对象后再恢复，关闭会话即结束整个进程树。
-- **命令解析**：裸程序名只在 `PATH` 中查找，绝不查找项目工作目录（防当前目录劫持）；带目录的相对路径按工作目录解析；
-  找不到时直接报错，不交给 `CreateProcess` 回退搜索。
+- **daemon 进程**：每个状态目录一个（`server.lock` 独占，Unix 上由 `flock` 实现），持有全部伪终端会话、后台任务与插件执行；
+  UI 分离（F10）或退出不影响它。命名管道（Unix 上为临时目录中的 Unix 域套接字）仅允许当前用户，**一次连接一个请求、一行 JSON**，
+  最多 16 个并发连接；消息按块读取，请求上限 128 Ki 字符、响应上限 8 Mi 字符。
+- **伪终端会话**：每个会话一个后台读取线程持续读取输出并喂给 `TerminalScreen`；终端查询回复在屏幕锁之外写回，
+  避免与 resize 发生锁顺序反转。关闭会话即结束整个进程树（各平台的做法见下表）。
+- **命令解析**：裸程序名只在 `PATH` 的绝对路径条目中查找，绝不查找项目工作目录（防当前目录劫持）；带目录的相对路径按工作目录解析；
+  找不到时直接报错，不交给系统回退搜索。
+
+### 平台差异
+
+| 方面 | Windows | Linux / macOS |
+| --- | --- | --- |
+| 伪终端 | `ConPtySession`：ConPTY（Windows 10 1809+） | `UnixPtySession`：libc `forkpty`，子进程成为新会话首进程，从设备为其控制终端 |
+| 启动命令 | 解析出程序的绝对路径后交给 `CreateProcess`；无扩展名时依次尝试 `.exe/.com/.cmd/.bat`，批处理经 `cmd.exe /d /s /c` 启动 | 只接受有执行权限的文件，经 `/bin/sh -c "exec '程序' 其余部分"` 执行：Shell 只解析参数，随后被程序替换 |
+| 结束进程树 | 进程挂起创建、加入 kill-on-close 作业对象后再恢复 | 向进程组发送 `SIGHUP`，1 秒后 `SIGKILL`，并 `waitpid` 回收；退出码按 Shell 惯例，被信号结束为 128 + 信号 |
+| 子进程环境 | `TERM`、`COLORTERM`；`NoDefaultCurrentDirectoryInExePath=1` 使会话中的 cmd 不从当前目录查找程序 | `TERM`、`COLORTERM`；没有区域设置时补一个 UTF-8 `LANG`；恢复 `SIGPIPE` 默认处理并清空信号屏蔽字 |
+| 句柄继承 | 只把伪控制台句柄交给子进程 | 主设备设置 close-on-exec，`forkpty` 与设置之间串行化，其他会话的进程不会继承 |
+| daemon 脱离 | `CreateProcessW` 不继承句柄、不创建窗口 | `setsid` 创建新会话，标准输入输出改接 `/dev/null`，关闭终端窗口不会结束 daemon |
+| 管道名 | `CrewTerm-用户名-路径哈希` | `crewterm-哈希`（用户名并入哈希），适应 Unix 域套接字约 104 字节的路径长度限制 |
+| 状态目录 | `%LOCALAPPDATA%\CrewTerm`（用户级 ACL） | `~/.local/share/CrewTerm` 或 `~/Library/Application Support/CrewTerm`，新建时权限 `0700` |
+| Shell 安全 | Provider hook 路径拒绝 `%`、`!`、`"` | 还拒绝 `$`、反引号、反斜杠；含 Shell 展开语法的启动命令需要显式登记恢复命令 |
+
+`fork` 之后、`execve` 之前，子进程只执行预先绑定（`Marshal.Prelink`）、不切换 GC 模式（`SuppressGCTransition`）的原生调用，
+所需的字符串与指针数组在 `fork` 之前全部写入非托管内存（`ChildProcessBlock`）：只剩一个线程的子进程中不会发生 JIT、托管分配或运行时锁等待。
+Apple Silicon 的可变参数一律经栈传递，`ioctl(TIOCSWINSZ)` 因此使用补齐寄存器的专用声明。
 - **后台任务**：`DaemonTaskService` 在线程池中执行，`admission` 信号量限制并发并使排队任务可无副作用地取消。
 
 ## 5. 状态目录与持久化
 
-状态目录默认为 `%LOCALAPPDATA%\CrewTerm`，文件名统一定义在 `StateFiles`：
+状态目录默认为 .NET 的 `LocalApplicationData` 下的 `CrewTerm`（Windows `%LOCALAPPDATA%\CrewTerm`、Linux `~/.local/share/CrewTerm`、
+macOS `~/Library/Application Support/CrewTerm`），由 `StateFiles.EnsureDirectory` 创建（Unix 上为 `0700`），文件名统一定义在 `StateFiles`：
 
 | 文件 | 写入方 | 并发策略 |
 | --- | --- | --- |

@@ -182,7 +182,8 @@ public sealed class LocalPluginCatalog
     /// <item><description>插件、命令、事件的标识都必须符合 <see cref="Identifier"/> 的规则；名称与版本必填。</description></item>
     /// <item><description>命令 1–64 条，标识不区分大小写唯一；可执行文件不能含 NUL、换行或引号。</description></item>
     /// <item><description>超时 1–300 秒，保留输出 1–1048576 个字符，参数至多 128 个且不含 NUL。</description></item>
-    /// <item><description>工作目录以及含目录分隔符的相对可执行文件路径必须位于插件目录之内。</description></item>
+    /// <item><description>工作目录以及含目录分隔符的相对可执行文件路径必须位于插件目录之内；
+    /// <c>windows</c>、<c>linux</c>、<c>osx</c> 替代调用与默认调用遵循相同的规则。</description></item>
     /// <item><description>事件钩子至多 64 条，且只能引用已声明的命令。</description></item>
     /// </list>
     /// </remarks>
@@ -205,15 +206,13 @@ public sealed class LocalPluginCatalog
             if (command is null) throw new InvalidDataException("Plugin command cannot be null.");
             Identifier(command.Id, "Command ID");
             if (!ids.Add(command.Id)) throw new InvalidDataException("Duplicate plugin command ID.");
-            if (string.IsNullOrWhiteSpace(command.Name) || string.IsNullOrWhiteSpace(command.Executable) || command.Executable.IndexOfAny(['\0', '\r', '\n', '"']) >= 0)
-                throw new InvalidDataException("A command needs a name and an unquoted executable.");
+            if (string.IsNullOrWhiteSpace(command.Name)) throw new InvalidDataException("A command needs a name.");
             if (command.TimeoutSeconds is < 1 or > 300 || command.MaxOutputCharacters is < 1 or > 1048576)
                 throw new InvalidDataException("Command timeout must be 1–300 seconds and retained output 1–1048576 characters.");
-            if (command.Arguments is { Length: > 128 } || command.Arguments?.Any(a => a is null || a.Contains('\0')) == true)
-                throw new InvalidDataException("Arguments must be at most 128 literal strings without NUL.");
             if (command.WorkingDirectory is not null) _ = ResolveRelative(source, command.WorkingDirectory);
-            if (!Path.IsPathRooted(command.Executable) && command.Executable.IndexOfAny(['/', '\\']) >= 0)
-                _ = ResolveRelative(source, command.Executable);
+            ValidateInvocation(command.Executable, command.Arguments, source);
+            foreach (var platform in new[] { command.Windows, command.Linux, command.Osx })
+                if (platform is not null) ValidateInvocation(platform.Executable ?? command.Executable, platform.Arguments, source);
         }
         if (manifest.Hooks?.Count > 64) throw new InvalidDataException("At most 64 event hooks are supported per plugin.");
         foreach (var hook in manifest.Hooks ?? [])
@@ -222,6 +221,23 @@ public sealed class LocalPluginCatalog
             Identifier(hook.Event, "Event name");
             if (!ids.Contains(hook.CommandId)) throw new InvalidDataException("Event hook refers to an undeclared command.");
         }
+    }
+
+    /// <summary>
+    /// 校验一次进程调用（默认调用或某个操作系统的替代调用）。
+    /// </summary>
+    /// <param name="executable">可执行文件：不能为空，不能带引号、换行或 NUL；含目录分隔符的相对路径必须位于插件目录之内。</param>
+    /// <param name="arguments">字面参数：至多 128 个，不能有 <see langword="null"/> 元素或含 NUL。</param>
+    /// <param name="source">插件源目录，用于检查相对路径。</param>
+    /// <exception cref="InvalidDataException">违反任一约束。</exception>
+    private static void ValidateInvocation(string executable, string[]? arguments, string source)
+    {
+        if (string.IsNullOrWhiteSpace(executable) || executable.IndexOfAny(['\0', '\r', '\n', '"']) >= 0)
+            throw new InvalidDataException("A command needs an unquoted executable.");
+        if (arguments is { Length: > 128 } || arguments?.Any(a => a is null || a.Contains('\0')) == true)
+            throw new InvalidDataException("Arguments must be at most 128 literal strings without NUL.");
+        if (!Path.IsPathRooted(executable) && executable.IndexOfAny(['/', '\\']) >= 0)
+            _ = ResolveRelative(source, executable);
     }
 
     /// <summary>

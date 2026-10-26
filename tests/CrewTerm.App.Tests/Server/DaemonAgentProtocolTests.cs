@@ -56,11 +56,11 @@ public sealed class DaemonAgentProtocolTests : IAsyncLifetime
     [Fact]
     public async Task DisplayedTextRejectsControlCharactersAndScreenTextIsOptional()
     {
-        var rejected = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state, Name: "evil\u001b]0;title\u0007"));
+        var rejected = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state, Name: "evil\u001b]0;title\u0007"));
         Assert.False(rejected.Ok);
         Assert.Contains("control characters", rejected.Error);
-        var first = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state + Path.DirectorySeparatorChar, Name: "A"));
-        var second = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state, Name: "B"));
+        var first = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state + Path.DirectorySeparatorChar, Name: "A"));
+        var second = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state, Name: "B"));
         Assert.True(first.Ok, first.Error);
         Assert.True(second.Ok, second.Error);
         var escaped = await Client.CallAsync(new("message-send", FromSessionId: first.SessionId, TargetSessionId: second.SessionId, Text: "hi\u001b[2J"));
@@ -83,11 +83,11 @@ public sealed class DaemonAgentProtocolTests : IAsyncLifetime
     [Fact]
     public async Task RelativePathsAndUnsafePromptsAreRejected()
     {
-        var relative = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: "."));
+        var relative = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: "."));
         Assert.False(relative.Ok);
         Assert.Contains("absolute path", relative.Error);
         Assert.False((await Client.CallAsync(new("task-start", Command: "echo x", WorkingDirectory: "relative"))).Ok);
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state));
+        var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state));
         Assert.True(created.Ok, created.Error);
         var interrupt = await Client.CallAsync(new("agent-prompt", created.SessionId, Text: "stop\u0003"));
         Assert.False(interrupt.Ok);
@@ -103,7 +103,7 @@ public sealed class DaemonAgentProtocolTests : IAsyncLifetime
     [Fact]
     public async Task FreshLiveSessionHasUnknownSemanticStateWithReason()
     {
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state));
+        var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state));
         Assert.True(created.Ok, created.Error);
         var response = await Client.CallAsync(new("agent-state", SessionId: created.SessionId));
         Assert.True(response.Ok, response.Error);
@@ -240,7 +240,7 @@ public sealed class DaemonAgentProtocolTests : IAsyncLifetime
     [Fact]
     public async Task ProcessExitBecomesExitedWithoutCompletionNotification()
     {
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /c exit /b 0", WorkingDirectory: state));
+        var created = await Client.CallAsync(new("create", Command: TestShell.Exit(0), WorkingDirectory: state));
         var result = await Client.CallAsync(new("agent-wait", created.SessionId, State: AgentActivityState.Exited, TimeoutMilliseconds: 15000));
         Assert.True(result.Ok, result.Error);
         Assert.Equal(AgentActivityState.Exited, result.Activity!.State);
@@ -255,7 +255,7 @@ public sealed class DaemonAgentProtocolTests : IAsyncLifetime
     [Fact]
     public async Task RawInputSubmissionHasEvidenceAndApprovalFallbackForKnownProvider()
     {
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state, Provider: "codex"));
+        var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state, Provider: "codex"));
         var id = created.SessionId!;
         await Client.CallAsync(new("agent-report", id, State: AgentActivityState.Done, Source: "hook", Reason: "Previous turn ended"));
         Assert.True((await Client.CallAsync(new("input", id, Text: "echo INPUT_ACTIVITY_MARKER\r"))).Ok);
@@ -297,12 +297,12 @@ public sealed class DaemonAgentProtocolTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// 在状态目录中创建一个运行 <c>cmd.exe /d /q</c> 的会话并断言成功。
+    /// 在状态目录中创建一个运行交互式 Shell（<see cref="TestShell.Interactive"/>）的会话并断言成功。
     /// </summary>
     /// <returns>新会话的标识。</returns>
     private async Task<string> CreateAsync()
     {
-        var created = await Client.CallAsync(new("create", Command: "cmd.exe /d /q", WorkingDirectory: state));
+        var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state));
         Assert.True(created.Ok, created.Error);
         return created.SessionId!;
     }

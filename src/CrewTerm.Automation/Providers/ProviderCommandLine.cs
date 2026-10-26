@@ -214,6 +214,10 @@ internal sealed class ProviderCommandLine
     /// 为奇数时成为字面的 <c>"</c>；不在 <c>"</c> 之前的反斜杠原样保留。任何空白字符（引号外）都分隔参数。</para>
     /// <para>以下写法不会导致异常，而是通过 <c>UnsafeReason</c> 报告（多处命中时保留最后一个原因）：
     /// 引号外的 <c>&amp;</c>、<c>|</c>、<c>&lt;</c>、<c>&gt;</c>、<c>^</c>、<c>(</c>、<c>)</c>；回车或换行；以及不平衡的引号。</para>
+    /// <para>Linux / macOS 上命令经 <c>/bin/sh</c> 执行，Shell 的展开与引号规则和上面的规则不同，因此还会报告：
+    /// 任意位置（双引号内仍会被 Shell 解释）的 <c>$</c>、反引号与反斜杠，以及引号外的单引号、<c>;</c>、<c>*</c>、<c>?</c>、
+    /// <c>[</c>、<c>]</c>、<c>~</c>、<c>#</c>、<c>{</c>、<c>}</c>。常见的“程序 + 选项 + 标识”命令不含这些字符，不受影响；
+    /// 双引号内的单引号（如 <c>-c "model='x y'"</c>）按字面处理，同样不受影响。</para>
     /// </remarks>
     /// <param name="command">完整的命令文本。</param>
     /// <returns>
@@ -237,6 +241,9 @@ internal sealed class ProviderCommandLine
             {
                 var c = command[index];
                 if (!quoted && c is '&' or '|' or '<' or '>' or '^' or '(' or ')') unsafeReason = "Shell operators require an explicit resume command";
+                // Linux / macOS 的命令经 /bin/sh 执行：这些字符会触发展开、注释或另一套引号与转义规则，与此处的解析不一致。
+                if (!OperatingSystem.IsWindows() && (c is '$' or '`' or '\\' || !quoted && c is '\'' or ';' or '*' or '?' or '[' or ']' or '~' or '#' or '{' or '}'))
+                    unsafeReason = "Shell expansion syntax requires an explicit resume command";
                 if (c is '\r' or '\n') unsafeReason = "Multiline commands require an explicit resume command";
                 if (c == '\\')
                 {

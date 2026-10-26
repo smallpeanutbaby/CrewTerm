@@ -9,7 +9,7 @@ using CrewTerm.Automation.Plugins;
 namespace CrewTerm.App.Tests.Cli;
 
 /// <summary>
-/// 以真实进程运行 <c>crewterm.exe</c> 的端到端测试：每条命令都通过 <c>--state-dir</c> 指向本测试独占的临时状态目录，
+/// 以真实进程运行 <c>crewterm</c> 可执行文件 的端到端测试：每条命令都通过 <c>--state-dir</c> 指向本测试独占的临时状态目录，
 /// 并经由真实命名管道 daemon 执行，覆盖 Agent 状态上报与等待、通知确认、定向消息与交接、保存会话的绑定/恢复/重启/遗忘，以及本地插件的安装、启用、运行与移除。
 /// </summary>
 public sealed class AgentCliIntegrationTests : IAsyncLifetime
@@ -21,23 +21,9 @@ public sealed class AgentCliIntegrationTests : IAsyncLifetime
     private readonly string state = Path.Combine(Path.GetTempPath(), "CrewTermAgentCliTests", Guid.NewGuid().ToString("N"));
 
     /// <summary>
-    /// 被测 <c>crewterm.exe</c> 的完整路径。
+    /// 被测 <c>crewterm</c> 可执行文件 的完整路径。
     /// </summary>
-    private readonly string executable;
-
-    /// <summary>
-    /// 定位被测可执行文件：优先使用环境变量 <c>CREWTERM_TEST_EXE</c>；
-    /// 否则从测试输出目录向上查找包含 <c>CrewTerm.slnx</c> 的仓库根目录，并按测试程序集的构建配置拼出
-    /// <c>src\CrewTerm.App\bin\&lt;配置&gt;\net10.0\crewterm.exe</c>。
-    /// </summary>
-    public AgentCliIntegrationTests()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "CrewTerm.slnx"))) directory = directory.Parent;
-        var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
-        executable = Environment.GetEnvironmentVariable("CREWTERM_TEST_EXE") ?? Path.Combine(directory!.FullName,
-            "src", "CrewTerm.App", "bin", configuration, "net10.0", "crewterm.exe");
-    }
+    private readonly string executable = CrewTermBuild.Executable;
 
     /// <summary>
     /// 在每个测试开始前创建临时状态目录。
@@ -137,7 +123,7 @@ public sealed class AgentCliIntegrationTests : IAsyncLifetime
     {
         var id = await CreateAsync();
         Response(await RunAsync("session-bind", id, "--provider", "custom", "--native-id", "native-original-42",
-            "--resume-command", "cmd.exe /d /c echo CLI_NATIVE_RESUME_MARKER"));
+            "--resume-command", TestShell.Echo("CLI_NATIVE_RESUME_MARKER")));
         Response(await RunAsync("close", id));
         var saved = Assert.Single(Response(await RunAsync("sessions", "--all", "true")).Sessions!);
         Assert.True(saved.IsDormant);
@@ -187,10 +173,10 @@ public sealed class AgentCliIntegrationTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// 通过 <c>new</c> 命令在临时状态目录中启动一个运行 <c>cmd.exe /d /q</c> 的会话（必要时由命令行自动启动 daemon）。
+    /// 通过 <c>new</c> 命令在临时状态目录中启动一个运行交互式 Shell（<see cref="TestShell.Interactive"/>）的会话（必要时由命令行自动启动 daemon）。
     /// </summary>
     /// <returns>新会话的标识。</returns>
-    private async Task<string> CreateAsync() => Response(await RunAsync("new", "--command", "cmd.exe /d /q", "--project", state)).SessionId!;
+    private async Task<string> CreateAsync() => Response(await RunAsync("new", "--command", TestShell.Interactive, "--project", state)).SessionId!;
 
     /// <summary>
     /// 以临时状态目录为工作目录、并在参数前加上 <c>--state-dir</c> 运行一次被测可执行文件，以 UTF-8 收集标准输出和标准错误；

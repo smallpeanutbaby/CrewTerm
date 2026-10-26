@@ -131,7 +131,7 @@ public sealed class LocalPluginRunner
     private static async Task<LocalPluginResult> ExecuteAsync(LocalPluginInfo plugin, LocalPluginCommand command,
         string json, CancellationToken stop, CancellationToken caller)
     {
-        var executable = command.Executable;
+        var executable = command.EffectiveExecutable;
         if (!Path.IsPathRooted(executable) && executable.IndexOfAny(['/', '\\']) >= 0)
             executable = LocalPluginCatalog.ResolveRelative(plugin.SourceDirectory, executable);
         var start = new ProcessStartInfo(executable)
@@ -141,7 +141,7 @@ public sealed class LocalPluginRunner
             RedirectStandardOutput = true, RedirectStandardError = true,
             StandardInputEncoding = new UTF8Encoding(false), StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
         };
-        foreach (var argument in command.Arguments ?? []) start.ArgumentList.Add(argument);
+        foreach (var argument in command.EffectiveArguments ?? []) start.ArgumentList.Add(argument);
         using var process = new Process { StartInfo = start };
         var output = new BoundedTextBuffer(command.MaxOutputCharacters);
         var gate = new object();

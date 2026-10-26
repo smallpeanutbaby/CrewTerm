@@ -1,0 +1,6 @@
+# 仓库中统一以 LF 保存文本；检出时按平台转换，但脚本保持其解释器要求的换行符。
+* text=auto
+*.sh text eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf

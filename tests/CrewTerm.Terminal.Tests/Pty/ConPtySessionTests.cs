@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.Versioning;
 using CrewTerm.Terminal.Pty;
 
 namespace CrewTerm.Terminal.Tests.Pty;
@@ -8,20 +9,21 @@ namespace CrewTerm.Terminal.Tests.Pty;
 /// 所有测试都通过真实 ConPTY 伪控制台启动真实的 <c>cmd.exe</c>、<c>.cmd</c> 脚本或 PowerShell 进程，
 /// 并轮询解析后的屏幕文本判断结果；需要文件的测试在系统临时目录下创建独立文件夹并在结束时删除。
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class ConPtySessionTests
 {
     /// <summary>
     /// 验证：会话中的子进程看到 <c>TERM=xterm-256color</c> 与 <c>COLORTERM=truecolor</c>，
     /// 而测试进程自身的这两个环境变量保持原值不变（只注入子进程）。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public async Task NativeSessionsAdvertiseTheirOwnTerminalCapabilities()
     {
         var parentTerm = Environment.GetEnvironmentVariable("TERM");
         var parentColor = Environment.GetEnvironmentVariable("COLORTERM");
         using var session = ConPtySession.Start("term-capabilities", "cmd.exe /d /q /c \"echo terminal=%TERM% color=%COLORTERM%\"",
             Path.GetTempPath(), 100, 24);
-        await Until(() => session.HasExited && session.Screen.GetText().Contains("terminal=xterm-256color color=truecolor"));
+        await Poll.Until(() => session.HasExited && session.Screen.GetText().Contains("terminal=xterm-256color color=truecolor"));
         Assert.Contains("terminal=xterm-256color color=truecolor", session.Screen.GetText());
         Assert.Equal(parentTerm, Environment.GetEnvironmentVariable("TERM"));
         Assert.Equal(parentColor, Environment.GetEnvironmentVariable("COLORTERM"));
@@ -31,12 +33,12 @@ public sealed class ConPtySessionTests
     /// 验证：调用方显式传入的环境变量优先于终端默认值——<c>TERM</c> 被覆盖为 <c>vt100</c>，
     /// 值为 <see langword="null"/> 的 <c>COLORTERM</c> 在子进程中未定义。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public async Task ExplicitEnvironmentOverridesTakePriorityOverTerminalDefaults()
     {
         using var session = ConPtySession.Start("term-overrides", "cmd.exe /d /q /c \"echo terminal=%TERM% & if defined COLORTERM (echo hascolor) else (echo nocolor)\"",
             Path.GetTempPath(), 100, 24, new Dictionary<string, string?> { ["TERM"] = "vt100", ["COLORTERM"] = null });
-        await Until(() => session.HasExited && session.Screen.GetText().Contains("nocolor"));
+        await Poll.Until(() => session.HasExited && session.Screen.GetText().Contains("nocolor"));
         Assert.Contains("terminal=vt100", session.Screen.GetText());
         Assert.Contains("nocolor", session.Screen.GetText());
     }
@@ -46,7 +48,7 @@ public sealed class ConPtySessionTests
     /// </summary>
     /// <param name="key">待注入的环境变量名。</param>
     /// <param name="value">待注入的环境变量值。</param>
-    [Theory]
+    [WindowsTheory]
     [InlineData("BAD=KEY", "value")]
     [InlineData("BAD\0KEY", "value")]
     [InlineData("BAD_KEY", "value\0INJECTED=bad")]
@@ -63,7 +65,7 @@ public sealed class ConPtySessionTests
     /// 验证：两个并发会话为同一个随机变量名设置不同的中文值时，各自只输出自己的值、看不到对方的值，
     /// 且该变量始终没有出现在测试进程自身的环境中。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public async Task SessionEnvironmentIsChildLocalAndIsolatedBetweenConcurrentSessions()
     {
         var key = "CREWTERM_ENV_" + Guid.NewGuid().ToString("N");
@@ -73,8 +75,8 @@ public sealed class ConPtySessionTests
             new Dictionary<string, string?> { [key] = "first-中文" });
         using var second = ConPtySession.Start("env-b", command, Path.GetTempPath(), 80, 24,
             new Dictionary<string, string?> { [key] = "second-中文" });
-        await Until(() => first.HasExited && first.Screen.GetText().Contains("value-first-中文"));
-        await Until(() => second.HasExited && second.Screen.GetText().Contains("value-second-中文"));
+        await Poll.Until(() => first.HasExited && first.Screen.GetText().Contains("value-first-中文"));
+        await Poll.Until(() => second.HasExited && second.Screen.GetText().Contains("value-second-中文"));
         Assert.DoesNotContain("second-中文", first.Screen.GetText());
         Assert.DoesNotContain("first-中文", second.Screen.GetText());
         Assert.Null(Environment.GetEnvironmentVariable(key));
@@ -84,14 +86,14 @@ public sealed class ConPtySessionTests
     /// 验证：把继承来的 <c>TEMP</c> 覆盖为 <see langword="null"/> 后，子进程中该变量未定义（输出 <c>removed</c>），
     /// 而测试进程自身的 <c>TEMP</c> 保持原值。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public async Task NullEnvironmentOverrideRemovesInheritedVariableOnlyFromChild()
     {
         var parent = Environment.GetEnvironmentVariable("TEMP");
         Assert.False(string.IsNullOrEmpty(parent));
         using var session = ConPtySession.Start("env-remove", "cmd.exe /d /q /c \"if defined TEMP (echo inherited) else (echo removed)\"",
             Path.GetTempPath(), 80, 24, new Dictionary<string, string?> { ["TEMP"] = null });
-        await Until(() => session.HasExited && session.Screen.GetText().Contains("removed"));
+        await Poll.Until(() => session.HasExited && session.Screen.GetText().Contains("removed"));
         Assert.Equal(parent, Environment.GetEnvironmentVariable("TEMP"));
     }
 
@@ -99,11 +101,11 @@ public sealed class ConPtySessionTests
     /// 验证：真实命令的输出 <c>crewterm-native</c> 出现在会话屏幕上，进程退出码 7 被如实记录，会话标识与启动时传入的一致；
     /// 超时则带上退出状态与屏幕内容报告失败。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public async Task RealCommandProducesTerminalOutputAndExitCode()
     {
         using var session = ConPtySession.Start("echo", "cmd.exe /d /q /c \"echo crewterm-native & exit /b 7\"", Path.GetTempPath(), 80, 24);
-        try { await Until(() => session.HasExited && session.Screen.GetText().Contains("crewterm-native")); }
+        try { await Poll.Until(() => session.HasExited && session.Screen.GetText().Contains("crewterm-native")); }
         catch (OperationCanceledException) { Assert.Fail($"PTY output timeout. Exited={session.HasExited}; code={session.ExitCode}; screen={session.Screen.GetText()}"); }
         Assert.Equal(7, session.ExitCode);
         Assert.Equal("echo", session.Id);
@@ -113,18 +115,18 @@ public sealed class ConPtySessionTests
     /// 验证：交互式 <c>cmd.exe</c> 会话在调整为 100×30 后，写入的命令被真实 Shell 执行并回显到屏幕，
     /// 屏幕快照的列数与行数随之更新；随后写入 <c>exit 0</c> 使进程以退出码 0 结束。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public async Task InteractiveInputAndResizeReachRealShell()
     {
         using var session = ConPtySession.Start("interactive", "cmd.exe /d /q", Path.GetTempPath(), 80, 24);
         session.Resize(100, 30);
         session.Write("echo crewterm-input\r");
-        try { await Until(() => session.Screen.GetText().Contains("crewterm-input")); }
+        try { await Poll.Until(() => session.Screen.GetText().Contains("crewterm-input")); }
         catch (OperationCanceledException) { Assert.Fail($"PTY input timeout. Exited={session.HasExited}; code={session.ExitCode}; screen={session.Screen.GetText()}"); }
         Assert.Equal(100, session.Screen.Snapshot().Columns);
         Assert.Equal(30, session.Screen.Snapshot().Rows);
         session.Write("exit 0\r");
-        await Until(() => session.HasExited);
+        await Poll.Until(() => session.HasExited);
         Assert.Equal(0, session.ExitCode);
     }
 
@@ -132,7 +134,7 @@ public sealed class ConPtySessionTests
     /// 验证：连续两次释放会话不会出错，会话拥有的 Shell 进程在 10 秒内退出、<see cref="ConPtySession.HasExited"/> 为
     /// <see langword="true"/>，释放后再写入输入抛出 <see cref="ObjectDisposedException"/>。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public async Task DisposeTerminatesTheOwnedProcessAndIsIdempotent()
     {
         var session = ConPtySession.Start("dispose", "cmd.exe /d /q", Path.GetTempPath(), 80, 24);
@@ -147,7 +149,7 @@ public sealed class ConPtySessionTests
     /// <summary>
     /// 验证：工作目录不存在时，<see cref="ConPtySession.Start"/> 在启动进程前就抛出 <see cref="DirectoryNotFoundException"/>。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public void MissingWorkingDirectoryIsRejectedBeforeLaunching()
     {
         Assert.Throws<DirectoryNotFoundException>(() => ConPtySession.Start("missing", "cmd.exe", Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()), 80, 24));
@@ -156,7 +158,7 @@ public sealed class ConPtySessionTests
     /// <summary>
     /// 验证：可执行文件不存在时，<see cref="ConPtySession.Start"/> 抛出 <see cref="System.ComponentModel.Win32Exception"/> 报告错误。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public void MissingExecutableIsReported()
     {
         Assert.Throws<System.ComponentModel.Win32Exception>(() => ConPtySession.Start("missing", "crewterm-does-not-exist-xyz.exe", Path.GetTempPath(), 80, 24));
@@ -167,7 +169,7 @@ public sealed class ConPtySessionTests
     /// Node.js 时被仓库中植入的 <c>node.bat</c> 劫持的途径；植入的脚本不运行，标记文件不出现。
     /// </summary>
     /// <returns>表示测试过程的任务。</returns>
-    [Fact]
+    [WindowsFact]
     public async Task ShellInsideSessionDoesNotRunProgramsFromTheWorkingDirectory()
     {
         var root = Path.Combine(Path.GetTempPath(), "CrewTerm cmd planted " + Guid.NewGuid().ToString("N"));
@@ -177,7 +179,7 @@ public sealed class ConPtySessionTests
             var marker = Path.Combine(root, "planted-ran.txt");
             File.WriteAllText(Path.Combine(root, "crewterm-planted-node.bat"), $"@echo off\r\necho ran> \"{marker}\"\r\n");
             using var session = ConPtySession.Start("planted-cmd", "cmd.exe /d /c crewterm-planted-node", root, 80, 24);
-            await Until(() => session.HasExited);
+            await Poll.Until(() => session.HasExited);
             Assert.False(File.Exists(marker));
         }
         finally { Directory.Delete(root, true); }
@@ -187,7 +189,7 @@ public sealed class ConPtySessionTests
     /// 验证：位于含空格目录、文件名也含空格的 <c>.cmd</c> 脚本，带一个含空格的带引号参数启动时，
     /// 能在伪控制台中正确运行：参数完整传入（输出 <c>shim-two words</c>），退出码 3 被如实记录。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public async Task CmdShimWithSpacesAndArgumentsRunsInsidePseudoconsole()
     {
         var root = Path.Combine(Path.GetTempPath(), "CrewTerm shim " + Guid.NewGuid().ToString("N"));
@@ -197,7 +199,7 @@ public sealed class ConPtySessionTests
             var shim = Path.Combine(root, "agent shim.cmd");
             File.WriteAllText(shim, "@echo off\r\necho shim-%~1\r\nexit /b 3\r\n");
             using var session = ConPtySession.Start("shim", $"\"{shim}\" \"two words\"", root, 80, 24);
-            await Until(() => session.HasExited && session.Screen.GetText().Contains("shim-two words"));
+            await Poll.Until(() => session.HasExited && session.Screen.GetText().Contains("shim-two words"));
             Assert.Equal(3, session.ExitCode);
         }
         finally { Directory.Delete(root, true); }
@@ -206,7 +208,7 @@ public sealed class ConPtySessionTests
     /// <summary>
     /// 验证：以显式相对路径（<c>.\</c> 前缀）且不带扩展名启动命令时，会在工作目录中找到同名 <c>.cmd</c> 脚本并运行，退出码为 0。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public async Task ExplicitRelativeCommandFindsCmdShimInWorkingDirectory()
     {
         var root = Path.Combine(Path.GetTempPath(), "CrewTerm shim " + Guid.NewGuid().ToString("N"));
@@ -215,7 +217,7 @@ public sealed class ConPtySessionTests
         {
             File.WriteAllText(Path.Combine(root, "crewterm-test-shim.cmd"), "@echo off\r\necho shim-discovered\r\n");
             using var session = ConPtySession.Start("shim", @".\crewterm-test-shim", root, 80, 24);
-            await Until(() => session.HasExited && session.Screen.GetText().Contains("shim-discovered"));
+            await Poll.Until(() => session.HasExited && session.Screen.GetText().Contains("shim-discovered"));
             Assert.Equal(0, session.ExitCode);
         }
         finally { Directory.Delete(root, true); }
@@ -225,7 +227,7 @@ public sealed class ConPtySessionTests
     /// 验证：不带路径的裸命令名不会解析到工作目录中被植入的同名 <c>.cmd</c> 脚本——启动抛出
     /// <see cref="System.ComponentModel.Win32Exception"/>，脚本本应写出的标记文件也不存在。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public void BareCommandNeverRunsAProgramPlantedInTheWorkingDirectory()
     {
         var root = Path.Combine(Path.GetTempPath(), "CrewTerm planted " + Guid.NewGuid().ToString("N"));
@@ -241,24 +243,12 @@ public sealed class ConPtySessionTests
     }
 
     /// <summary>
-    /// 每隔 25 毫秒轮询一次条件，直到条件成立；最多等待 15 秒，超时后抛出 <see cref="TaskCanceledException"/>。
-    /// 其他终端测试类也复用此方法等待真实进程的输出。
-    /// </summary>
-    /// <param name="condition">要等待成立的条件。</param>
-    /// <returns>条件成立时完成的任务。</returns>
-    internal static async Task Until(Func<bool> condition)
-    {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        while (!condition()) await Task.Delay(25, timeout.Token);
-    }
-
-    /// <summary>
     /// 验证：同一目录中同时存在无扩展名的 Unix Shell 脚本（npm 安装时生成）与同名 <c>.cmd</c> 脚本时，
     /// 无论以绝对路径还是 <c>.\</c> 相对路径启动，实际运行的都是 <c>.cmd</c> 脚本：参数正确传入，退出码为 9，
     /// 屏幕上不出现 Unix 脚本的输出。
     /// </summary>
     /// <param name="absolutePath"><see langword="true"/> 时以带引号的绝对路径启动，否则以 <c>.\</c> 相对路径启动。</param>
-    [Theory]
+    [WindowsTheory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task WindowsCmdShimTakesPriorityOverExtensionlessUnixShim(bool absolutePath)
@@ -272,7 +262,7 @@ public sealed class ConPtySessionTests
             File.WriteAllText(extensionless + ".cmd", "@echo off\r\necho windows-shim-%~1\r\nexit /b 9\r\n");
             var command = absolutePath ? $"\"{extensionless}\" check" : @".\crewterm-test-agent check";
             using var session = ConPtySession.Start("shim-priority", command, root, 80, 24);
-            await Until(() => session.HasExited && session.Screen.GetText().Contains("windows-shim-check"));
+            await Poll.Until(() => session.HasExited && session.Screen.GetText().Contains("windows-shim-check"));
             Assert.Equal(9, session.ExitCode);
             Assert.DoesNotContain("wrong-unix-shim", session.Screen.GetText());
         }
@@ -283,7 +273,7 @@ public sealed class ConPtySessionTests
     /// 验证：会话中的 PowerShell 以 <c>Start-Process</c> 启动一个脱离控制台的隐藏 <c>cmd.exe</c> 子进程（持续 <c>ping -t</c>）
     /// 并把其 PID 写入文件；释放会话后，这个后代进程也会在 10 秒内被终止。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public async Task DisposeTerminatesDescendantProcessesOwnedByTheSession()
     {
         var root = Path.Combine(Path.GetTempPath(), "CrewTerm child " + Guid.NewGuid().ToString("N"));
@@ -294,7 +284,7 @@ public sealed class ConPtySessionTests
             var script = "$child = Start-Process cmd.exe -ArgumentList '/d /q /c ping -t 127.0.0.1' -WindowStyle Hidden -PassThru; "
                 + "$child.Id | Set-Content -LiteralPath '" + pidFile.Replace("'", "''") + "'; Start-Sleep -Seconds 120";
             using var session = ConPtySession.Start("children", $"powershell.exe -NoLogo -NoProfile -Command \"{script}\"", root, 80, 24);
-            await Until(() => File.Exists(pidFile) && new FileInfo(pidFile).Length > 0);
+            await Poll.Until(() => File.Exists(pidFile) && new FileInfo(pidFile).Length > 0);
             using var child = Process.GetProcessById(int.Parse((await File.ReadAllTextAsync(pidFile)).Trim()));
             try
             {

@@ -21,6 +21,19 @@ Manifest 使用 `id`、`name`、`version`、`commands`，以及可选 `hooks`。
 
 `executable` 可以是 PATH 中的程序、绝对路径或插件目录内的相对路径。参数通过 `ProcessStartInfo.ArgumentList` 原样传递，不做变量替换或 shell 拼接。需要 shell 的插件必须显式声明 shell 作为 executable。工作目录默认为插件源目录，也可以选择其内部相对目录。
 
+不同操作系统需要不同的程序或参数时，在 command 中加入 `windows`、`linux` 或 `osx` 对象，只写需要替换的 `executable` 和/或 `arguments`，
+其余沿用默认值；替代调用与默认调用遵循相同的校验规则。例如默认使用 PowerShell 7，在 Windows 上改用系统自带的 Windows PowerShell：
+
+```json
+{
+  "id": "summary",
+  "name": "Summarize workspace files",
+  "executable": "pwsh",
+  "arguments": ["-NoProfile", "-File", "plugin.ps1"],
+  "windows": { "executable": "powershell", "arguments": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "plugin.ps1"] }
+}
+```
+
 安装保存 manifest 快照；修改命令声明后需要移除并重新安装。源程序仍在原目录执行，因此修改脚本会影响下次运行。启用代表允许以当前用户权限执行声明的本地程序；执行超时和输出限制不构成安全沙箱。停用禁止新的运行，不撤销已经开始的进程。
 
 ## JSON 输入和结果
