@@ -18,7 +18,7 @@ jobs:
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -37,31 +37,45 @@ jobs:
         run: dotnet build CrewTerm.slnx -c Release
 
       # 逐个运行测试项目：多个程序集同时启动大量真实进程（伪终端、Shell、PowerShell、daemon）时，
-      # 共享的 CI 机器负载过高，计时类测试会无谓地超时。
+      # 共享的 CI 机器负载过高，计时类测试会无谓地超时。单个测试超过 5 分钟视为卡死：结束测试进程并在日志中记下该测试。
       - name: Test
+        timeout-minutes: 45
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force TestResults | Out-Null
           $failed = @()
           foreach ($project in Get-ChildItem tests -Filter '*.Tests.csproj' -Recurse | Sort-Object Name) {
-            dotnet test $project.FullName -c Release --no-build --logger trx --results-directory TestResults
-            if ($LASTEXITCODE -ne 0) { $failed += $project.BaseName }
+            $watch = [Diagnostics.Stopwatch]::StartNew()
+            dotnet test $project.FullName -c Release --no-build --logger trx --results-directory TestResults `
+              --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none 2>&1 | Tee-Object -FilePath "TestResults/$($project.BaseName).log"
+            $code = $LASTEXITCODE
+            if ($code -ne 0) { $failed += $project.BaseName }
+            Write-Output "::notice title=$($project.BaseName)::exit $code after $([int]$watch.Elapsed.TotalSeconds) s"
           }
           if ($failed) { Write-Output "::error title=Failed test projects::$($failed -join ', ')"; exit 1 }
 
-      # 把失败测试写成注释，直接显示在运行摘要与提交的检查结果中。每个步骤最多显示 10 条错误注释，
-      # 因此先输出一条列出全部失败测试名称的汇总，再输出各测试的消息与堆栈。
-      - name: Annotate failed tests
-        if: failure()
+      # 把结果写成注释，直接显示在运行摘要与提交的检查结果中（即使测试步骤超时也会运行）。每个步骤每种级别最多显示 10 条，
+      # 因此先输出汇总：全部失败测试的名称、被判定卡死的测试、最慢的测试；再输出各失败测试的消息与堆栈。
+      - name: Annotate test results
+        if: always()
         shell: pwsh
         run: |
           function Escape([string]$text) { $text.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A') }
-          $failures = @(Get-ChildItem TestResults -Filter *.trx -Recurse | ForEach-Object {
+          $results = @(Get-ChildItem TestResults -Filter *.trx -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
             [xml]$trx = Get-Content -LiteralPath $_.FullName -Raw
-            @($trx.TestRun.Results.UnitTestResult) | Where-Object { $_.outcome -eq 'Failed' }
+            @($trx.TestRun.Results.UnitTestResult)
           })
+          $hung = @(Get-ChildItem TestResults -Filter *.log -ErrorAction SilentlyContinue |
+            Select-String -Pattern 'active test|was running|Blame' | ForEach-Object { "$($_.Filename): $($_.Line.Trim())" })
+          if ($hung) { Write-Output "::error title=Hung or aborted tests::$(Escape ($hung -join "`n"))" }
+          $slowest = $results | Where-Object { $_.duration } | Sort-Object { [TimeSpan]::Parse($_.duration) } -Descending | Select-Object -First 15
+          if ($slowest) {
+            $lines = $slowest | ForEach-Object { "$([int][TimeSpan]::Parse($_.duration).TotalSeconds) s  $($_.outcome)  $($_.testName)" }
+            Write-Output "::notice title=Slowest tests::$(Escape ($lines -join "`n"))"
+          }
+          $failures = @($results | Where-Object { $_.outcome -eq 'Failed' })
           if ($failures.Count -eq 0) { exit 0 }
-          $names = ($failures | ForEach-Object { $_.testName }) -join "`n"
-          Write-Output "::error title=$($failures.Count) failed tests::$(Escape $names)"
+          Write-Output "::error title=$($failures.Count) failed tests::$(Escape (($failures | ForEach-Object { $_.testName }) -join "`n"))"
           foreach ($result in $failures) {
             $text = "$($result.Output.ErrorInfo.Message)`n$($result.Output.ErrorInfo.StackTrace)"
             if ($text.Length -gt 3000) { $text = $text.Substring(0, 3000) }

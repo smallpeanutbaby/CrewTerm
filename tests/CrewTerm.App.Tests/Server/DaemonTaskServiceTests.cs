@@ -28,7 +28,7 @@ public sealed class DaemonTaskServiceTests : IDisposable
     public async Task TaskContinuesWithoutCallerAndCompletedRunReopensFromHistory()
     {
         using var service = new DaemonTaskService(root);
-        var command = TestShell.Sequence("echo started", TestShell.Sleep(1), "echo finished");
+        var command = TestShell.Sequence("echo started", TestShell.Sleep(3), "echo finished");
         var id = service.Start(new("persistent", command, root));
         var running = await WaitForAsync(service, id, info => info.Output.Contains("started"));
         Assert.False(running.Completed);
