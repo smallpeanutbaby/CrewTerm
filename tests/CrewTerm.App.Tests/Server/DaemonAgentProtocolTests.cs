@@ -257,12 +257,17 @@ public sealed class DaemonAgentProtocolTests : IAsyncLifetime
     {
         var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state, Provider: "codex"));
         var id = created.SessionId!;
+        // 先等 Shell 开始读取命令：否则命令在 Shell 打印提示符之前就被回显，输出会接在提示符之后，批准提示不再位于行首。
+        Assert.True((await Client.CallAsync(new("input", id, Text: "echo SHELL_READY\r"))).Ok);
+        await WaitForLineAsync(id, "SHELL_READY");
         await Client.CallAsync(new("agent-report", id, State: AgentActivityState.Done, Source: "hook", Reason: "Previous turn ended"));
         Assert.True((await Client.CallAsync(new("input", id, Text: "echo INPUT_ACTIVITY_MARKER\r"))).Ok);
         var working = (await Client.CallAsync(new("agent-state", id))).Activity!;
         Assert.Equal(AgentActivityState.Working, working.State);
         Assert.Equal("input", working.Source);
         Assert.Contains("submitted", working.Reason, StringComparison.OrdinalIgnoreCase);
+        // 上一条命令执行完、Shell 重新读取命令之后再输入下一条，同样是为了让输出从行首开始。
+        await WaitForLineAsync(id, "INPUT_ACTIVITY_MARKER");
         await Client.CallAsync(new("input", id, Text: "echo Do you want to proceed?\r"));
         var blocked = await Client.CallAsync(new("agent-wait", id, State: AgentActivityState.Blocked, TimeoutMilliseconds: 15000));
         Assert.True(blocked.Ok, blocked.Error);
