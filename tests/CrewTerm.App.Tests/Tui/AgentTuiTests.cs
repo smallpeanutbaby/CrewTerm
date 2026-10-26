@@ -30,7 +30,7 @@ public sealed class AgentTuiTests
             using var ui = Launch("agent-mail-ui", root, state);
             await Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
             var a = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Sender"));
-            await Wait(() => ui.Screen.GetText().Contains("Sender  ·"), ui, "sender selected");
+            await Wait(() => ui.Screen.GetText().Contains("┤Sender"), ui, "sender selected");
             var b = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Receiver"));
             await Wait(() => Sidebar(ui).Contains("Receiver"), ui, "receiver available");
             await Command(ui, "Agent: Send message");
@@ -104,7 +104,7 @@ public sealed class AgentTuiTests
             await Wait(() => Sidebar(ui).Contains("Second Agent"), ui, "sidebar loaded");
             ui.Write("\u001b5"); await Task.Delay(200); ui.Write("\u001b[B"); await Task.Delay(150);
             await client.CallAsync(new("agent-report", b.SessionId, State: AgentActivityState.Blocked, Source: "api", Reason: "Needs input"));
-            await Wait(() => Sidebar(ui).Contains("[WAIT]"), ui, "priority reordered");
+            await Wait(() => Sidebar(ui).Contains("blocked ·"), ui, "priority reordered");
             ui.Write("\r"); await Task.Delay(200); ui.Write("echo STILL_SECOND\r");
             await WaitForText(client, b.SessionId!, "STILL_SECOND", ui);
             ui.Write("\u001b[21~"); await Wait(() => ui.HasExited, ui, "detach");
@@ -137,8 +137,8 @@ public sealed class AgentTuiTests
             var b = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Review B"));
             Assert.True((await client.CallAsync(new("agent-report", a.SessionId, State: AgentActivityState.Done, Source: "api", Reason: "Build finished"))).Ok);
             Assert.True((await client.CallAsync(new("agent-report", b.SessionId, State: AgentActivityState.Blocked, Source: "api", Reason: "Approve review"))).Ok);
-            await Wait(() => Sidebar(ui).Contains("[WAIT]") && Sidebar(ui).Contains("[DONE*]"), ui, "semantic sidebar states");
-            Assert.True(Sidebar(ui).IndexOf("[WAIT]", StringComparison.Ordinal) < Sidebar(ui).IndexOf("[DONE*]", StringComparison.Ordinal));
+            await Wait(() => Sidebar(ui).Contains("blocked ·") && Sidebar(ui).Contains("done ·"), ui, "semantic sidebar states");
+            Assert.True(Sidebar(ui).IndexOf("blocked ·", StringComparison.Ordinal) < Sidebar(ui).IndexOf("done ·", StringComparison.Ordinal));
             await Command(ui, "Agent: Notifications");
             await Wait(() => ui.Screen.GetText().Contains("NOTIFICATIONS"), ui, "notification list");
             ui.Write("Review B"); await Task.Delay(200); ui.Write("\r");
@@ -182,7 +182,7 @@ public sealed class AgentTuiTests
             using var ui = Launch("scrollback-find-ui", root, state);
             await Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
             var shell = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "History"));
-            await Wait(() => ui.Screen.GetText().Contains("History  ·"), ui, "history session selected");
+            await Wait(() => ui.Screen.GetText().Contains("┤History"), ui, "history session selected");
             await client.CallAsync(new("input", shell.SessionId, Text: "echo SCROLL_MARKER\r"));
             await WaitForText(client, shell.SessionId!, "SCROLL_MARKER", ui);
             await Command(ui, "Terminal: View / search scrollback");
@@ -204,9 +204,9 @@ public sealed class AgentTuiTests
     }
 
     /// <summary>
-    /// 截取界面屏幕每一行的前 28 列（左侧会话侧栏所在区域），用于只针对侧栏内容做断言。
+    /// 截取界面屏幕每一行的前 36 列（窗口边框与左侧 34 列的 spaces / agents 侧栏），用于只针对侧栏内容做断言。
     /// </summary>
     /// <param name="ui">运行工作区界面的伪终端会话。</param>
     /// <returns>按行以换行符连接的侧栏文本。</returns>
-    private static string Sidebar(ITerminalSession ui) => string.Join('\n', ui.Screen.GetText().Split('\n').Select(line => line[..Math.Min(28, line.Length)]));
+    private static string Sidebar(ITerminalSession ui) => string.Join('\n', ui.Screen.GetText().Split('\n').Select(line => line[..Math.Min(36, line.Length)]));
 }

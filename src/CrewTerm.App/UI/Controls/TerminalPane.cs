@@ -383,8 +383,14 @@ public sealed class TerminalPane : View
         var snapshot = DisplaySnapshot;
         if (snapshot is null)
         {
-            Move(1, 1); AddStr("F3  Start an agent or shell");
-            Move(1, 3); AddStr("Each terminal has its own process and working directory.");
+            // 空面板的提示：说明这里能做什么，以及侧栏与前缀键的用法。
+            SetAttribute(new Attribute(new Color(0xc6d1df), new Color(0x10151d)));
+            Move(2, 1); AddStr("This pane is empty.");
+            SetAttribute(new Attribute(new Color(0x7f849c), new Color(0x10151d)));
+            Move(2, 3); AddStr("F3            start an agent or a shell here");
+            Move(2, 4); AddStr("click an agent in the sidebar to show it here");
+            Move(2, 5); AddStr("ctrl+b v / -  split right / down");
+            Move(2, 6); AddStr("ctrl+b c      new tab");
             return true;
         }
         var (start, end) = SelectionRange();

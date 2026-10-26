@@ -60,7 +60,7 @@ public sealed class LayoutTuiTests
             using var ui = Launch("initial-focus-ui", root, state);
             await Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
             var created = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Initial shell"));
-            await Wait(() => ui.Screen.GetText().Contains("Initial shell  ·"), ui, "initial terminal bound");
+            await Wait(() => ui.Screen.GetText().Contains("┤Initial shell"), ui, "initial terminal bound");
             ui.Write("echo INITIAL_FOCUS\r");
             await WaitForText(client, created.SessionId!, "INITIAL_FOCUS", ui);
             ui.Write("\u001b[21~"); await Wait(() => ui.HasExited, ui, "detach");
@@ -74,7 +74,7 @@ public sealed class LayoutTuiTests
     }
 
     /// <summary>
-    /// 验证：会话输出 80 行历史后，用 Alt+1 聚焦主终端并发送 SGR 滚轮向上使最新一行离开视口；之后键入的命令送达会话，且面板自动回到实时输出并显示新命令的结果。
+    /// 验证：会话输出 80 行历史后，用 Alt+1 聚焦主终端并发送 SGR 滚轮向上使面板最上方的历史行号变小（已离开实时画面）；之后键入的命令送达会话，且面板自动回到实时输出并显示新命令的结果。
     /// </summary>
     [Fact]
     public async Task TypingAfterScrollReturnsToLiveTerminalOutput()
@@ -90,9 +90,11 @@ public sealed class LayoutTuiTests
             var created = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Scroll shell"));
             await client.CallAsync(new("input", created.SessionId, Text: TestShell.CountLines("HISTORY_LINE_", 80) + "\r"));
             await Wait(() => ui.Screen.GetText().Contains("HISTORY_LINE_80"), ui, "history produced");
+            var liveTop = TopHistoryLine(ui);
             ui.Write("\u001b1"); await Task.Delay(200);
             ui.Write("\u001b[<64;50;8M");
-            await Wait(() => !ui.Screen.GetText().Contains("HISTORY_LINE_80"), ui, "scrolled back");
+            // 面板可能比内容高（底部留有空行），因此以最上方可见的历史行号变小来判断已经向上滚动。
+            await Wait(() => TopHistoryLine(ui) < liveTop, ui, "scrolled back");
             ui.Write("echo RETURNED_LIVE\r");
             await WaitForText(client, created.SessionId!, "RETURNED_LIVE", ui);
             await Wait(() => ui.Screen.GetText().Contains("RETURNED_LIVE"), ui, "typing returns to live output");
@@ -135,16 +137,16 @@ public sealed class LayoutTuiTests
             Assert.DoesNotContain("CHARLIE_TARGET", (await client.CallAsync(new("screen", a.SessionId))).Text);
             Assert.DoesNotContain("CHARLIE_TARGET", (await client.CallAsync(new("screen", b.SessionId))).Text);
 
-            // SGR 鼠标事件先经过外层伪终端，再交给真实界面的鼠标捕获处理器：在第 6 行按住左键，从第 104 列拖到第 124 列后释放，移动左右面板之间的分隔线。
-            ui.Write("\u001b[<0;104;6M"); await Task.Delay(100);
-            ui.Write("\u001b[<32;124;6M"); await Task.Delay(100);
-            ui.Write("\u001b[<0;124;6m");
+            // SGR 鼠标事件先经过外层伪终端，再交给真实界面的鼠标捕获处理器：在第 6 行按住左键，从第 108 列（终端区从第 37 列开始，左右面板之间的分隔线所在列）拖到第 128 列后释放。
+            ui.Write("\u001b[<0;108;6M"); await Task.Delay(100);
+            ui.Write("\u001b[<32;128;6M"); await Task.Delay(100);
+            ui.Write("\u001b[<0;128;6m");
 
             await Command(ui, "Tab: New");
             await Wait(() => ui.Screen.GetText().Contains("New tab name"), ui, "tab name prompt");
             ui.Write("\u0001Review\r");
-            await Wait(() => ui.Screen.GetText().Contains("Review") && ui.Screen.GetText().Contains("1 pane"), ui, "new named tab");
-            ui.Write("\u001b[<0;34;2M\u001b[<0;34;2m");
+            await Wait(() => ui.Screen.GetText().Contains(" Review ") && !ui.Screen.GetText().Contains(" panes"), ui, "new named tab");
+            ui.Write("\u001b[<0;39;2M\u001b[<0;39;2m");
             await Wait(() => ui.Screen.GetText().Contains("3 panes"), ui, "previous tab layout");
             ui.Write("\u001b[21~");
             await Wait(() => ui.HasExited, ui, "detach");
@@ -199,6 +201,15 @@ public sealed class LayoutTuiTests
     /// <returns>运行界面的伪终端会话。</returns>
     internal static ITerminalSession Launch(string id, string root, string state)
         => TerminalSession.Start(id, $"\"{CrewTermBuild.Executable}\" --state-dir \"{state}\" --project \"{root}\"", root, 180, 55);
+
+    /// <summary>
+    /// 界面屏幕上可见的最小 <c>HISTORY_LINE_</c> 行号，即终端面板最上方的历史行。
+    /// </summary>
+    /// <param name="ui">运行工作区界面的伪终端会话。</param>
+    /// <returns>最小行号；屏幕上没有任何历史行时为 <see cref="int.MaxValue"/>。</returns>
+    private static int TopHistoryLine(ITerminalSession ui) =>
+        System.Text.RegularExpressions.Regex.Matches(ui.Screen.GetText(), @"HISTORY_LINE_(\d+)")
+            .Select(match => int.Parse(match.Groups[1].Value)).DefaultIfEmpty(int.MaxValue).Min();
 
     /// <summary>
     /// 在 15 秒内每 100 毫秒向 daemon 请求一次指定会话的屏幕文本，直到其中包含期望文本；超时则附上界面当前屏幕内容使测试失败。

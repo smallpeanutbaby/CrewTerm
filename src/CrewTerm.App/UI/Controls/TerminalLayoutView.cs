@@ -1,7 +1,10 @@
 using CrewTerm.Core.Layouts;
+using Terminal.Gui.Drawing;
 using Terminal.Gui.Input;
+using Terminal.Gui.Text;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
+using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace CrewTerm.App.UI.Controls;
 
@@ -9,7 +12,8 @@ namespace CrewTerm.App.UI.Controls;
 /// 显示一个项目的终端标签页，以及按分割树动态创建的终端面板与分隔条。
 /// </summary>
 /// <remarks>
-/// 视图只负责把 <see cref="TerminalLayout"/> 模型映射为界面：顶部一行是标签栏（标签、<c>[+]</c> 新建、<c>[≡]</c> 菜单、面板计数），
+/// 视图只负责把 <see cref="TerminalLayout"/> 模型映射为界面：顶部一行是 herdr 风格的标签栏（各标签名、紧随其后的 <c>+</c> 新建标签，
+/// 分屏时右侧以暗色显示面板数；右键标签栏打开命令菜单），
 /// 其下是面板区域。每个分割树叶子对应一个 <see cref="FrameView"/> 包裹的 <see cref="TerminalPane"/>，
 /// 只为当前标签页创建；切换标签页或修改分割树后调用 <see cref="Rebuild"/> 同步。
 /// 面板与会话的绑定先保存在视图上，需要持久化时由 <see cref="SaveBindings"/> 写回模型。
@@ -18,7 +22,42 @@ namespace CrewTerm.App.UI.Controls;
 public sealed class TerminalLayoutView : View
 {
     /// <summary>
-    /// 顶部一行高的标签栏，子视图依次为各标签、<c>[+]</c>、<c>[≡]</c> 与面板计数标签。
+    /// 活动标签的前景色（粗体）。
+    /// </summary>
+    private const int ActiveTabColor = 0xffffff;
+
+    /// <summary>
+    /// 活动标签的背景色。
+    /// </summary>
+    private const int ActiveTabBackground = 0x25425c;
+
+    /// <summary>
+    /// 其他标签的前景色。
+    /// </summary>
+    private const int TabColor = 0x9399b2;
+
+    /// <summary>
+    /// 新建标签按钮 <c>+</c> 的颜色。
+    /// </summary>
+    private const int PlusColor = 0x89b4fa;
+
+    /// <summary>
+    /// 面板数提示的暗色。
+    /// </summary>
+    private const int CountColor = 0x6c7086;
+
+    /// <summary>
+    /// 标签栏背景色，与工作台窗口一致。
+    /// </summary>
+    private const int BarBackground = 0x10151d;
+
+    /// <summary>
+    /// 标签栏右侧为面板数提示保留的列数。
+    /// </summary>
+    private const int CountWidth = 9;
+
+    /// <summary>
+    /// 顶部一行高的标签栏，子视图依次为各标签、<c>+</c> 与面板数提示。
     /// </summary>
     private readonly View tabBar = new() { Width = Dim.Fill(), Height = 1 };
 
@@ -81,12 +120,12 @@ public sealed class TerminalLayoutView : View
     public Action? SelectionChanged { get; set; }
 
     /// <summary>
-    /// 点击标签栏上的 <c>[+]</c> 时调用，由工作台询问新标签名并创建标签页。
+    /// 点击标签栏上的 <c>+</c> 时调用，由工作台询问新标签名并创建标签页。
     /// </summary>
     public Action? NewTabRequested { get; set; }
 
     /// <summary>
-    /// 点击标签栏上的 <c>[≡]</c> 时调用，由工作台打开命令面板。
+    /// 右键单击标签栏时调用，由工作台打开命令面板。
     /// </summary>
     public Action? MenuRequested { get; set; }
 
@@ -100,8 +139,14 @@ public sealed class TerminalLayoutView : View
     {
         Width = Dim.Fill(); Height = Dim.Fill(); CanFocus = true;
         Add(tabBar, paneArea);
+        tabBar.SetScheme(new Scheme { Normal = new Attribute(new Color(TabColor), new Color(BarBackground)) });
         paneArea.SubViewLayout += (_, _) => ArrangePanes();
         tabBar.SubViewLayout += (_, _) => ArrangeTabs();
+        tabBar.MouseEvent += (_, mouse) =>
+        {
+            if (mouse.Flags.HasFlag(MouseFlags.RightButtonPressed) && !mouse.Flags.HasFlag(MouseFlags.PositionReport))
+            { mouse.Handled = true; MenuRequested?.Invoke(); }
+        };
     }
 
     /// <summary>
@@ -224,24 +269,27 @@ public sealed class TerminalLayoutView : View
     }
 
     /// <summary>
-    /// 重新创建标签栏的全部子视图：每个标签一个可点击标签（活动标签前加 <c>●</c>），随后是 <c>[+]</c>、<c>[≡]</c> 与面板计数，然后排列位置。
+    /// 重新创建标签栏的全部子视图：每个标签一个可点击的标签名（活动标签高亮），随后是 <c>+</c> 与面板数提示，然后排列位置。
     /// </summary>
     /// <remarks>
-    /// 子视图的顺序是 <see cref="ArrangeTabs"/> 的前提：前 N 个对应 N 个标签，最后三个依次为控制按钮与计数。
+    /// 子视图的顺序是 <see cref="ArrangeTabs"/> 的前提：前 N 个对应 N 个标签，最后两个依次为 <c>+</c> 与面板数提示。
+    /// 面板数只在当前标签页分屏时显示，例如 <c>3 panes</c>。
     /// </remarks>
     private void BuildTabs()
     {
         foreach (var child in tabBar.SubViews.ToArray()) { tabBar.Remove(child); child.Dispose(); }
         foreach (var tab in layout.Tabs)
         {
-            var button = TabAction((tab.Id == layout.ActiveTabId ? "● " : "") + tab.Name, () => SelectTab(tab.Id));
+            var active = tab.Id == layout.ActiveTabId;
+            var button = TabAction(" " + tab.Name + " ", () => SelectTab(tab.Id),
+                new Attribute(new Color(active ? ActiveTabColor : TabColor), new Color(active ? ActiveTabBackground : BarBackground), active ? TextStyle.Bold : TextStyle.None));
             button.Data = tab.Id;
             tabBar.Add(button);
         }
-        var plus = TabAction("[+]", () => NewTabRequested?.Invoke());
-        var menu = TabAction("[≡]", () => MenuRequested?.Invoke());
-        var count = new Label { Text = $"{bindings.Count} pane{(bindings.Count == 1 ? "" : "s")}", Height = 1, Data = "count" };
-        tabBar.Add(plus, menu, count);
+        var plus = TabAction(" + ", () => NewTabRequested?.Invoke(), new Attribute(new Color(PlusColor), new Color(BarBackground)));
+        var count = new Label { Text = bindings.Count > 1 ? $"{bindings.Count} panes" : "", Height = 1, Data = "count" };
+        count.SetScheme(new Scheme { Normal = new Attribute(new Color(CountColor), new Color(BarBackground)) });
+        tabBar.Add(plus, count);
         ArrangeTabs();
     }
 
@@ -250,10 +298,12 @@ public sealed class TerminalLayoutView : View
     /// </summary>
     /// <param name="text">显示文本。</param>
     /// <param name="action">左键按下时在 UI 线程执行的操作。</param>
+    /// <param name="attribute">显示颜色与样式。</param>
     /// <returns>新建的标签视图，尚未加入任何父视图。</returns>
-    private static Label TabAction(string text, Action action)
+    private static Label TabAction(string text, Action action, Attribute attribute)
     {
         var label = new Label { Text = text, Height = 1, CanFocus = false };
+        label.SetScheme(new Scheme { Normal = attribute });
         label.MouseEvent += (_, mouse) =>
         {
             if (mouse.Flags.HasFlag(MouseFlags.LeftButtonPressed) && !mouse.Flags.HasFlag(MouseFlags.PositionReport))
@@ -263,34 +313,36 @@ public sealed class TerminalLayoutView : View
     }
 
     /// <summary>
-    /// 按标签栏当前宽度排列标签与右侧控件。
+    /// 按标签栏当前宽度依次排列标签、<c>+</c> 与面板数提示。
     /// </summary>
     /// <remarks>
-    /// 右侧固定保留 17 列给 <c>[+]</c>（距右边 16 列）、<c>[≡]</c>（距右边 12 列）与 8 列宽的面板计数；
-    /// 其余宽度平分给各标签，每个标签 4–24 列。放不下时从第一个标签开始显示尽可能多的标签；
-    /// 活动标签超出这一段时改为显示以活动标签结尾的一段连续标签，其余标签隐藏。
+    /// 每个标签按名称宽度占 4–24 列，从左到右紧密排列，<c>+</c> 紧跟在最后一个可见标签之后，面板数提示靠右。
+    /// 放不下时从第一个标签开始显示尽可能多的标签；活动标签超出这一段时改为显示以活动标签结尾的一段连续标签，其余标签隐藏。
     /// 标签栏尚无子视图时什么也不做；子视图顺序必须与 <see cref="BuildTabs"/> 创建的一致。
     /// </remarks>
     private void ArrangeTabs()
     {
-        if (tabBar.SubViews.Count == 0) return;
+        if (tabBar.SubViews.Count < layout.Tabs.Count + 2) return;
         var width = Math.Max(0, tabBar.Viewport.Width);
-        var tabWidth = Math.Clamp((width - 17) / Math.Max(1, layout.Tabs.Count), 4, 24);
+        var views = tabBar.SubViews.ToArray();
+        var widths = layout.Tabs.Select((_, i) => Math.Clamp(views[i].Text.GetColumns(), 4, 24)).ToArray();
+        var room = Math.Max(0, width - 3 - CountWidth);
         var active = Math.Max(0, layout.Tabs.FindIndex(t => t.Id == layout.ActiveTabId));
-        var capacity = Math.Max(1, (width - 17) / tabWidth);
-        var start = Math.Max(0, active - capacity + 1);
+        // 先从第一个标签开始尽量放；放不下活动标签时，改为以活动标签结尾向前放。
+        var start = 0;
+        while (start < active && widths.Skip(start).Take(active - start + 1).Sum() > room) start++;
         var x = 0;
         for (var i = 0; i < layout.Tabs.Count; i++)
         {
-            var view = tabBar.SubViews.ElementAt(i);
-            view.Visible = i >= start && i < start + capacity;
-            view.X = x; view.Y = 0; view.Width = tabWidth;
-            if (view.Visible) x += tabWidth;
+            var view = views[i];
+            view.Visible = i >= start && x + widths[i] <= Math.Max(room, widths[start]);
+            view.X = x; view.Y = 0; view.Width = widths[i];
+            if (view.Visible) x += widths[i];
         }
-        var controls = tabBar.SubViews.Skip(layout.Tabs.Count).ToArray();
-        controls[0].X = Math.Max(0, width - 16); controls[0].Width = 3;
-        controls[1].X = Math.Max(0, width - 12); controls[1].Width = 3;
-        controls[2].X = Math.Max(0, width - 8); controls[2].Width = 8;
+        var plus = views[layout.Tabs.Count];
+        plus.X = x; plus.Y = 0; plus.Width = 3;
+        var count = views[layout.Tabs.Count + 1];
+        count.X = Math.Max(x + 3, width - CountWidth); count.Y = 0; count.Width = CountWidth;
     }
 
     /// <summary>

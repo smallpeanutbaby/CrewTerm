@@ -22,7 +22,8 @@ using Terminal.Gui.Views;
 namespace CrewTerm.App.UI.Windows;
 
 /// <summary>
-/// CrewTerm 的全屏工作台窗口：左侧项目与 Agent 会话列表，右侧终端标签页与分屏，下方文件列表与代码编辑器。
+/// CrewTerm 的全屏工作台窗口：左侧 herdr 风格的侧栏（<c>spaces</c> 项目与 <c>agents</c> 会话），右侧终端标签页与分屏，
+/// 按 F4 时在终端下方显示文件列表与代码编辑器。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -31,7 +32,8 @@ namespace CrewTerm.App.UI.Windows;
 /// 因此分离（F10）或关闭窗口不会结束会话，重新打开后按保存的布局恢复。
 /// </para>
 /// <para>
-/// 类按职责拆分为多个分部文件：本文件负责构造、全局快捷键、刷新循环、项目/会话/文件导航与释放；
+/// 类按职责拆分为多个分部文件：本文件负责构造、全局快捷键、刷新循环、项目/会话/文件导航与释放；<c>Sidebar</c> 为侧栏，
+/// <c>Prefix</c> 为 <c>Ctrl+b</c> 前缀键；
 /// <c>Actions</c> 为命令面板与常规操作，<c>Agents</c> 为 Agent 状态、通知与消息，<c>Extensions</c> 为会话恢复与本地插件，
 /// <c>Layout</c> 为标签页与分屏，<c>Mouse</c> 为终端面板回调，<c>Tools</c> 为 Git、后台任务与检查点。
 /// </para>
@@ -104,16 +106,6 @@ public sealed partial class WorkspaceWindow : Window
     private readonly EditorBinding editor = new();
 
     /// <summary>
-    /// 左上方 “SPACES” 框中的项目列表，当前项目前显示 <c>●</c>。
-    /// </summary>
-    private readonly ListView projectList = new() { Width = Dim.Fill(), Height = Dim.Fill() };
-
-    /// <summary>
-    /// 左下方 “AGENTS” 框中的会话列表，各行与 <see cref="sessions"/> 一一对应。
-    /// </summary>
-    private readonly ListView sessionList = new() { Width = Dim.Fill(), Height = Dim.Fill() };
-
-    /// <summary>
     /// 下方 “FILES” 框中的目录列表；不在项目根目录时第一行为 <c>../</c>，其余各行依次对应 <see cref="files"/>。
     /// </summary>
     private readonly ListView fileList = new() { Width = Dim.Fill(), Height = Dim.Fill() };
@@ -181,11 +173,10 @@ public sealed partial class WorkspaceWindow : Window
     private volatile bool polling, detached;
 
     /// <summary>
-    /// <c>updatingLists</c>：正在以代码重建会话列表，期间忽略会话列表的选择操作；
-    /// <c>filesVisible</c>：下方文件与编辑器区域是否显示（默认显示）；
+    /// <c>filesVisible</c>：下方文件与编辑器区域是否显示（默认隐藏，终端占满主区；F4 切换，打开文件时自动显示）；
     /// <c>exitApproved</c>：已确认可以退出（未保存修改与布局保存都已处理），之后窗口停止运行不再被拦截。
     /// </summary>
-    private bool updatingLists, filesVisible = true, exitApproved;
+    private bool filesVisible, exitApproved;
 
     /// <summary>
     /// 当前项目以及切换项目时保护未保存编辑的规则。
@@ -208,15 +199,9 @@ public sealed partial class WorkspaceWindow : Window
     private FileEntry[] files = [];
 
     /// <summary>
-    /// 最近一次刷新得到的全部会话，按优先级降序、启动时间升序排列，与 <see cref="sessionList"/> 的各行对应。
+    /// 最近一次刷新得到的全部会话，按优先级降序、启动时间升序排列，与侧栏 <see cref="agentSection"/> 的各行对应。
     /// </summary>
     private SessionInfo[] sessions = [];
-
-    /// <summary>
-    /// 上次重建会话列表时的签名（各会话的标识、退出状态、退出码、活动修订号与未读数）；
-    /// 签名未变时跳过重建，避免打断用户在列表中的选择与滚动。
-    /// </summary>
-    private string sessionSignature = "";
 
     /// <summary>
     /// 每个会话已经处理过的活动状态修订号，保证同一次状态变化只在状态栏提醒一次。
@@ -264,8 +249,7 @@ public sealed partial class WorkspaceWindow : Window
         settings = settingsStore.Load();
         agents = new(stateDirectory);
         checkpoints = new(stateDirectory);
-        Title = serverCompatibilityWarning is null ? "CrewTerm  ·  MULTI-AGENT WORKSPACE"
-            : "CrewTerm  ·  OLD SERVER · F1 for upgrade instructions";
+        Title = serverCompatibilityWarning is null ? "crewterm" : "crewterm  ·  OLD SERVER · F1 for upgrade instructions";
         Width = Dim.Fill(); Height = Dim.Fill();
         SetScheme(new Scheme
         {
@@ -273,10 +257,10 @@ public sealed partial class WorkspaceWindow : Window
             Focus = new(new Color(0xffffff), new Color(0x25425c)),
             HotNormal = new(new Color(0x68dbbf), new Color(0x10151d))
         });
-        var spaces = new FrameView { Title = "SPACES  ·  F2", Width = 28, Height = Dim.Percent(32) };
-        var crew = new FrameView { Title = "AGENTS  ·  F3", Width = 28, Y = Pos.Bottom(spaces), Height = Dim.Fill(2) };
-        spaces.Add(projectList); crew.Add(sessionList);
-        terminalLayout.X = 28; terminalLayout.Y = 0;
+        spaceSection.Width = SidebarWidth; spaceSection.Height = 2;
+        agentSection.Y = Pos.Bottom(spaceSection) + 1; agentSection.Width = SidebarWidth; agentSection.Height = Dim.Fill(2);
+        ConfigureSidebar();
+        terminalLayout.Y = 0;
         terminalLayout.PaneCreated = ConfigureTerminalPane;
         terminalLayout.SelectionChanged = () =>
         {
@@ -288,11 +272,9 @@ public sealed partial class WorkspaceWindow : Window
         filesFrame.Add(fileList); editorFrame.Add(editor.View);
         status.Y = Pos.AnchorEnd(2);
         var shortcuts = new Label { Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Height = 1,
-            Text = "F1 Help  F2 Project  F3 Agent  F4 Files  F5 Save  F6 Git  F7 Tasks  F8 Split  F9 Commands  F10 Detach" };
-        Add(spaces, crew, terminalLayout, filesFrame, editorFrame, status, shortcuts);
+            Text = "F1 Help  F2 Space  F3 Agent  F4 Files  F6 Git  F7 Tasks  F9 Commands  F10 Detach  ·  Ctrl+b prefix" };
+        Add(spaceSection, agentSection, terminalLayout, filesFrame, editorFrame, status, shortcuts);
         ArrangePanels();
-        projectList.Accepting += (_, e) => { e.Handled = true; Guard(SelectProject); };
-        sessionList.Accepting += (_, e) => { e.Handled = true; Guard(SelectSession); };
         fileList.Accepting += (_, e) => { e.Handled = true; Guard(OpenFileEntry); };
         application.Keyboard.KeyDown += GlobalKey;
         IsRunningChanging += (_, args) =>
@@ -332,7 +314,7 @@ public sealed partial class WorkspaceWindow : Window
             if (!response.Ok) throw new IOException(response.Error ?? "Input failed");
         }, error => { if (!detached) application.Invoke(() => status.Text = "Input: " + error.Message); });
         refreshTimer = application.AddTimeout(TimeSpan.FromMilliseconds(160), () => { BeginRefresh(); return !detached; });
-        status.Text = serverCompatibilityWarning ?? projectRoot ?? "F2 Add a project, then F3 start an agent. F9 lists all commands.";
+        status.Text = serverCompatibilityWarning ?? projectRoot ?? "Click + new beside spaces (F2) to add a project, then + new beside agents (F3). Ctrl+b ? lists keys.";
         terminalLayout.ActivePane.SetFocus();
     }
 
@@ -340,14 +322,18 @@ public sealed partial class WorkspaceWindow : Window
     /// 按 <see cref="filesVisible"/> 重新设置终端区、文件框与编辑器框的位置和大小。
     /// </summary>
     /// <remarks>
-    /// 左侧 28 列固定为项目与会话列表。显示文件区时终端区占 53% 高度，其下左侧是 30 列宽的文件列表、右侧是编辑器；
+    /// 侧栏显示时左侧 <see cref="SidebarWidth"/> 列为 <c>spaces</c> 与 <c>agents</c>，其右空出一列；隐藏时（<c>Ctrl+b b</c>）终端区占满宽度。
+    /// 显示文件区时终端区占 53% 高度，其下左侧是 30 列宽的文件列表、右侧是编辑器；
     /// 隐藏时终端区一直延伸到底部两行（状态栏与快捷键提示）之上。
     /// </remarks>
     private void ArrangePanels()
     {
+        var left = sidebarVisible ? SidebarWidth + 1 : 0;
+        spaceSection.Visible = agentSection.Visible = sidebarVisible;
+        terminalLayout.X = left;
         terminalLayout.Width = Dim.Fill();
         terminalLayout.Height = filesVisible ? Dim.Percent(53) : Dim.Fill(2);
-        filesFrame.X = 28; filesFrame.Y = Pos.Bottom(terminalLayout);
+        filesFrame.X = left; filesFrame.Y = Pos.Bottom(terminalLayout);
         filesFrame.Width = 30; filesFrame.Height = Dim.Fill(2); filesFrame.Visible = filesVisible;
         editorFrame.X = Pos.Right(filesFrame); editorFrame.Y = filesFrame.Y;
         editorFrame.Width = Dim.Fill(); editorFrame.Height = Dim.Fill(2); editorFrame.Visible = filesVisible;
@@ -372,6 +358,7 @@ public sealed partial class WorkspaceWindow : Window
     private void GlobalKey(object? sender, Key key)
     {
         if (application.TopRunnable != this || detached) return;
+        if (HandlePrefix(key)) { key.Handled = true; return; }
         Action? action = key.KeyCode switch
         {
             KeyCode.F1 => ShowHelp,
@@ -393,7 +380,7 @@ public sealed partial class WorkspaceWindow : Window
         if (key == Key.D2.WithAlt) action = () => { if (terminalLayout.Panes.Count > 1) secondary.SetFocus(); };
         if (key == Key.D3.WithAlt) action = () => { ShowFiles(); editor.View.SetFocus(); };
         if (key == Key.D4.WithAlt) action = () => { ShowFiles(); fileList.SetFocus(); };
-        if (key == Key.D5.WithAlt) action = () => sessionList.SetFocus();
+        if (key == Key.D5.WithAlt) action = () => agentSection.SetFocus();
         if (action is not null) { key.Handled = true; Guard(action); return; }
         // 终端拥有焦点时，Ctrl+C、Ctrl+Q、Esc 与 Tab 都归终端所有（发给子程序），而不是交给 Terminal.Gui 处理。
         var terminal = terminalLayout.Panes.FirstOrDefault(p => p.HasFocus);
@@ -466,11 +453,8 @@ public sealed partial class WorkspaceWindow : Window
                 if (!detached) application.Invoke(() => refreshGate.TryApply(generation, () =>
                 {
                     if (detached) return;
-                    var selectedId = sessionList.SelectedItem is int selected && selected >= 0 && selected < sessions.Length
-                        ? sessions[selected].Id : null;
                     sessions = fresh.OrderByDescending(s => s.Priority).ThenBy(s => s.StartedAt).ToArray();
                     UpdateActivityAlerts();
-                    RefreshSessionList(selectedId);
                     foreach (var update in updates)
                     {
                         update.Pane.SessionId = update.Id; update.Pane.Update(update.Screen);
@@ -478,6 +462,7 @@ public sealed partial class WorkspaceWindow : Window
                         ResizePane(update.Pane);
                     }
                     terminalLayout.SaveBindings();
+                    RefreshSidebar();
                 }));
             }
             catch (Exception error) when (error is not OutOfMemoryException)
@@ -491,14 +476,14 @@ public sealed partial class WorkspaceWindow : Window
     /// </summary>
     /// <param name="pane">要显示标题的面板。</param>
     /// <returns>
-    /// 会话在最近的会话列表中时为 “名称 · 活动状态 · 会话标识前 6 位”；面板未绑定会话时为 “TERMINAL · F3 New”；
+    /// 会话在最近的会话列表中时为 “名称  状态符号 状态 · 程序”（例如 <c>reviewer  ◉ blocked · claude</c>）；面板未绑定会话时为 “TERMINAL · F3 New”；
     /// 绑定的会话已不在列表中（例如 daemon 重启后只剩保存的记录）时为 “SAVED SESSION · F9 Resume”。
     /// </returns>
     private string SessionTitle(TerminalPane pane)
     {
         var session = sessions.FirstOrDefault(s => s.Id == pane.SessionId);
         return session is null ? (pane.SessionId is null ? "TERMINAL  ·  F3 New" : "SAVED SESSION  ·  F9 Resume")
-            : $"{session.Name}  ·  {ActivityLabel(session)}  ·  {session.Id[..Math.Min(6, session.Id.Length)]}";
+            : $"{session.Name}  {AgentStateStyle.For(session).Glyph} {AgentStateStyle.Describe(session)}";
     }
 
     /// <summary>
@@ -539,32 +524,9 @@ public sealed partial class WorkspaceWindow : Window
     }
 
     /// <summary>
-    /// 重建项目列表（当前项目前显示 <c>●</c>），并选中当前项目；没有当前项目时选中第一项。
+    /// 重建侧栏（项目列表变化或切换项目之后调用）。
     /// </summary>
-    private void RefreshProjects()
-    {
-        projectList.SetSource(new ObservableCollection<string>(projects.Projects.Select(p => (FileSystemPath.AreSame(p.Path, projectRoot) ? "● " : "  ") + p.Name)));
-        if (projects.Projects.Count > 0) projectList.SelectedItem = Math.Max(0, projects.Projects.ToList().FindIndex(p => FileSystemPath.AreSame(p.Path, projectRoot)));
-    }
-
-    /// <summary>
-    /// 按 <see cref="sessions"/> 重建会话列表，每行为 “[活动状态] 名称”。
-    /// </summary>
-    /// <remarks>
-    /// 会话签名与上次相同时什么也不做，以免每次刷新都打断用户的选择。重建期间置位 <see cref="updatingLists"/>。
-    /// </remarks>
-    /// <param name="selectedId">重建前选中的会话标识，重建后尽量保持选中它；为 <see langword="null"/> 或已不存在时选中第一项。</param>
-    private void RefreshSessionList(string? selectedId)
-    {
-        var signature = string.Join('|', sessions.Select(s => $"{s.Id}:{s.HasExited}:{s.ExitCode}:{s.Activity?.Revision}:{s.UnreadCount}"));
-        if (sessionSignature == signature) return;
-        sessionSignature = signature;
-        updatingLists = true;
-        var selected = selectedId is null ? 0 : Array.FindIndex(sessions, s => s.Id == selectedId);
-        sessionList.SetSource(new ObservableCollection<string>(sessions.Select(s => $"[{ActivityLabel(s)}] {s.Name}")));
-        if (sessions.Length > 0) sessionList.SelectedItem = Math.Clamp(selected, 0, sessions.Length - 1);
-        updatingLists = false;
-    }
+    private void RefreshProjects() => RefreshSidebar();
 
     /// <summary>
     /// 重新读取 <see cref="relativeDirectory"/> 并重建文件列表，然后选中第一项、在外框标题中显示当前目录。
@@ -637,33 +599,6 @@ public sealed partial class WorkspaceWindow : Window
     }
 
     /// <summary>
-    /// 在项目列表中按 Enter 时，切换到选中的项目。
-    /// </summary>
-    private void SelectProject()
-    {
-        if (projectList.SelectedItem is int index && index < projects.Projects.Count) SwitchProject(projects.Projects[index]);
-    }
-
-    /// <summary>
-    /// 在会话列表中按 Enter 时，把选中的会话显示到终端区并聚焦。
-    /// </summary>
-    /// <remarks>
-    /// 以代码重建列表期间忽略。必要时先切换到会话工作目录所属的项目（用户可能因未保存修改而取消）；
-    /// 会话已显示在某个面板中时聚焦该面板，否则替换活动面板中显示的会话。该会话会被记为下次启动时恢复的会话。
-    /// </remarks>
-    private void SelectSession()
-    {
-        if (updatingLists || sessionList.SelectedItem is not int index || index >= sessions.Length) return;
-        var session = sessions[index];
-        if (!BindSessionProject(session.WorkingDirectory)) return;
-        refreshGate.SelectionChanged();
-        var pane = terminalLayout.Panes.FirstOrDefault(p => p.SessionId == session.Id) ?? ActiveTerminal;
-        pane.SessionId = session.Id; pane.Update(null); pane.SetFocus();
-        settings.LastSessionId = session.Id;
-        status.Text = session.WorkingDirectory;
-    }
-
-    /// <summary>
     /// 确保当前项目就是某个工作目录所在的项目，在显示或启动该目录下的会话之前调用。
     /// </summary>
     /// <remarks>
@@ -690,6 +625,7 @@ public sealed partial class WorkspaceWindow : Window
             editor.Close(true); relativeDirectory = "";
             LoadProjectLayout();
             RefreshProjects(); RefreshFiles(); UpdateEditorTitle();
+            status.Text = project.Path;
         }
         return true;
     }
@@ -765,7 +701,14 @@ public sealed partial class WorkspaceWindow : Window
     /// </summary>
     private void ShowHelp() => Dialogs.Text(application, "SHORTCUTS · CrewTerm",
         (serverCompatibilityWarning is null ? "" : serverCompatibilityWarning + "\n\n") + CrewTermHelp.Text +
-        "\n\nEnter selects an item. F9 opens the searchable command palette.\nUse Alt+1/2/3/4/5 to move focus between terminals, editor, files and agents.\nThe embedded CLI receives ordinary keys, Ctrl+C, Esc and Tab.\nUse F9 → Terminal: Send reserved key for function keys reserved by CrewTerm.\nFile saves detect external changes made by agents and refuse to overwrite them.");
+        "\n\nSIDEBAR\n  spaces   one row per project: state dot, name, git branch. Click to switch, right-click for a menu, + new to add (F2).\n" +
+        "  agents   every agent: ◉ blocked  ● working  ● done (unread)  ○ idle. Click to show it, right-click for actions, + new to start (F3).\n" +
+        "\nPREFIX KEYS (press Ctrl+b, then)\n  N new space   c new tab   n / p next / previous tab   1-9 go to tab   T rename tab   X close tab\n" +
+        "  v split right   - split down   o next pane   x close pane   w focus spaces   g focus agents\n" +
+        "  b toggle sidebar   q detach   ? this help   Ctrl+b send Ctrl+b to the terminal   Esc cancel\n" +
+        "\nF9 opens the searchable command palette. Alt+1/2/3/4/5 move focus between terminals, editor, files and agents.\n" +
+        "The embedded CLI receives ordinary keys, Ctrl+C, Esc and Tab. Use F9 → Terminal: Send reserved key for function keys reserved by CrewTerm.\n" +
+        "F4 shows files and the editor. File saves detect external changes made by agents and refuse to overwrite them.");
 
     /// <summary>
     /// 请求分离工作台（F10）：窗口停止运行，所有会话继续在 daemon 中运行。

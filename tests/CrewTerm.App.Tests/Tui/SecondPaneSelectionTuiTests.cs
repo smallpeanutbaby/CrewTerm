@@ -111,7 +111,7 @@ public sealed class SecondPaneSelectionTuiTests
             await Ready(ui);
             var a = await Create(client, projectA, "Origin Alpha");
             var b = await Create(client, projectB, "Other Bravo");
-            await LayoutTuiTests.Wait(() => ui.Screen.GetText().Contains("Other Bravo") && ui.Screen.GetText().Contains("Origin Alpha  ·"), ui, "cross-project sessions listed");
+            await LayoutTuiTests.Wait(() => ui.Screen.GetText().Contains("Other Bravo") && ui.Screen.GetText().Contains("┤Origin Alpha"), ui, "cross-project sessions listed");
             await ChooseSecond(ui, "Other Bravo");
             ui.Write("echo SECOND_IN_PROJECT_B\r");
             await LayoutTuiTests.WaitForText(client, b, "SECOND_IN_PROJECT_B", ui);

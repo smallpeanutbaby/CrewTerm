@@ -103,7 +103,7 @@ public sealed class TuiSmokeTests
     }
 
     /// <summary>
-    /// 验证：以项目 A 启动后，在侧栏（Alt+5）中选择属于项目 B 的会话，会把文件工作区切换到项目 B（显示 <c>ONLY_IN_B.cs</c>），分离后记录的最后项目为 B、最后会话为该会话；
+    /// 验证：以项目 A 启动后，在侧栏（Alt+5）中选择属于项目 B 的会话，会把工作区切换到项目 B（状态栏显示项目 B 的路径），分离后记录的最后项目为 B、最后会话为该会话；
     /// 不带 <c>--project</c> 重新连接时恢复到同一项目和会话；而以 <c>--project</c> 显式指定项目 A 启动时，不会把另一个根目录下保存的会话绑定到终端（键入后提示 <c>F3 starts a terminal.</c>）。
     /// </summary>
     [Fact]
@@ -127,8 +127,8 @@ public sealed class TuiSmokeTests
                 await WaitUntil(() => terminal.Screen.GetText().Contains("Agent B"), terminal, "B session in sidebar");
                 // Alt+5 把焦点移到会话列表后再按 Enter；负载高时焦点切换可能晚于固定延时，未生效就重试。
                 await RetryUntil(terminal, () => { terminal.Write("\u001b5"); return Task.Delay(300).ContinueWith(_ => terminal.Write("\r")); },
-                    () => terminal.Screen.GetText().Contains("ONLY_IN_B.cs"));
-                await WaitUntil(() => terminal.Screen.GetText().Contains("ONLY_IN_B.cs"), terminal, "B file workspace");
+                    () => terminal.Screen.GetText().Contains(b));
+                await WaitUntil(() => terminal.Screen.GetText().Contains(b), terminal, "B workspace");
                 terminal.Write("\u001b[21~");
                 await WaitUntil(() => terminal.HasExited, terminal, "detach B");
                 var settings = new CrewTerm.Core.Settings.WorkspaceSettingsStore(state).Load();
@@ -136,7 +136,7 @@ public sealed class TuiSmokeTests
                 Assert.Equal(b, project.Path);
                 Assert.Equal(session.SessionId, settings.LastSessionId);
             using var reconnected = TerminalSession.Start("reconnected", $"\"{executable}\" --state-dir \"{state}\"", root, 150, 45);
-            await WaitUntil(() => reconnected.Screen.GetText().Contains("ONLY_IN_B.cs") && reconnected.Screen.GetText().Contains("Agent B"), reconnected, "consistent reconnect");
+            await WaitUntil(() => reconnected.Screen.GetText().Contains(b) && reconnected.Screen.GetText().Contains("Agent B"), reconnected, "consistent reconnect");
             reconnected.Write("\u001b[21~");
             await WaitUntil(() => reconnected.HasExited, reconnected, "reconnected detach");
             using var explicitlySelected = TerminalSession.Start("explicit-project", $"\"{executable}\" --state-dir \"{state}\" --project \"{a}\"", root, 150, 45);
@@ -207,8 +207,11 @@ public sealed class TuiSmokeTests
         try
         {
             using var terminal = TerminalSession.Start("editor-ui", $"\"{executable}\" --state-dir \"{state}\" --project \"{project}\"", root, 150, 45);
+            await WaitUntil(() => terminal.Screen.GetText().Contains("F10 Detach"), terminal, "workspace ready");
+            // 文件区默认隐藏：Alt+4 显示文件区并聚焦文件列表。
+            terminal.Write("\u001b4");
             await WaitUntil(() => terminal.Screen.GetText().Contains("hello.cs"), terminal, "file browser");
-            terminal.Write("\u001b4"); await Task.Delay(250); terminal.Write("\r");
+            await Task.Delay(250); terminal.Write("\r");
             await WaitUntil(() => terminal.Screen.GetText().Contains("INITIAL_TEXT"), terminal, "opened code");
             terminal.Write("SAVED_EDIT"); await Task.Delay(250); terminal.Write("\u001b[15~");
             await WaitUntil(() => File.ReadAllText(file).Contains("SAVED_EDIT"), terminal, "saved editor text");
@@ -288,7 +291,7 @@ public sealed class TuiSmokeTests
     }
 
     /// <summary>
-    /// 返回界面中标题以 <paramref name="title"/> 开头的终端面板左边框所在的列（面板标题形如 <c>╭┤Agent B  ·  …</c>）。
+    /// 返回界面中标题以 <paramref name="title"/> 开头的终端面板左边框所在的列（面板标题形如 <c>╭┤Agent B  ○ unknown · cmd</c>）。
     /// </summary>
     /// <param name="terminal">运行工作区界面的伪终端会话。</param>
     /// <param name="title">面板标题开头的会话名称。</param>

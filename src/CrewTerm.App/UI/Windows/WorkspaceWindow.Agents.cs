@@ -10,23 +10,18 @@ namespace CrewTerm.App.UI.Windows;
 public sealed partial class WorkspaceWindow
 {
     /// <summary>
-    /// 生成会话活动状态的简短标签，用于会话列表、面板标题与各种选择列表。
+    /// 生成会话活动状态的简短标签（与侧栏一致的 herdr 风格），用于各种选择列表。
     /// </summary>
     /// <param name="session">会话信息。</param>
     /// <returns>
-    /// 进程已退出时为 <c>EXIT</c> 加退出码；否则按活动状态为 <c>WORK</c>（工作中）、<c>WAIT</c>（等待用户）、
-    /// <c>DONE*</c>（已完成且有未读通知）或 <c>DONE</c>、<c>IDLE</c>、<c>EXIT</c>；没有可靠的活动信息时为 <c>?</c>。
+    /// 状态符号加“状态 · 程序”，例如 <c>◉ blocked · claude</c>；进程已退出时在状态后附上退出码，例如 <c>✕ exited 1 · cmd</c>。
     /// </returns>
-    private static string ActivityLabel(SessionInfo session) => session.HasExited ? "EXIT " + session.ExitCode
-        : session.Activity?.State switch
-        {
-            AgentActivityState.Working => "WORK",
-            AgentActivityState.Blocked => "WAIT",
-            AgentActivityState.Done => session.UnreadCount > 0 ? "DONE*" : "DONE",
-            AgentActivityState.Idle => "IDLE",
-            AgentActivityState.Exited => "EXIT",
-            _ => "?"
-        };
+    private static string ActivityLabel(SessionInfo session)
+    {
+        var badge = AgentStateStyle.For(session);
+        var word = session.HasExited && session.ExitCode is { } code ? badge.Word + " " + code : badge.Word;
+        return badge.Glyph + " " + word + " · " + AgentStateStyle.Program(session);
+    }
 
     /// <summary>
     /// 检查各会话的活动状态是否有新的变化，并为需要关注的变化在状态栏提醒。
