@@ -75,7 +75,7 @@ public sealed class AgentActivityStoreTests : IDisposable
     /// <summary>
     /// 验证：ConPTY 重绘时的几种编码都不妨碍识别行首的审批提示——窗口标题变化（OSC <c>ESC ] 0 ; … BEL</c>）恰好输出在提示所在行的开头、
     /// 单词之间的空格被编码为光标右移 <c>ESC [ C</c>、用 <c>ESC [ G</c> 或单独的回车回到第 1 列；
-    /// 而光标右移到第 1 列之后的文字（前面仍有命令提示符）不会被当作位于行首。
+    /// 输出块末尾被截断的 <c>ESC [</c> 不会导致异常；而光标右移到第 1 列之后的文字（前面仍有命令提示符）不会被当作位于行首。
     /// </summary>
     /// <param name="output">ConPTY 风格的一段输出。</param>
     /// <param name="blocked">是否应当识别为审批提示。</param>
@@ -86,6 +86,7 @@ public sealed class AgentActivityStoreTests : IDisposable
     [InlineData("C:\\work>echo x\u001b[GDo you want to proceed?", true)]
     [InlineData("C:\\work>echo x\rDo you want to proceed?", true)]
     [InlineData("\u001b7\u001b(B\r\nAllow this command?", true)]
+    [InlineData("C:\\work>echo x\r\nDo you want to proceed?\r\n\u001b[", true)]
     [InlineData("C:\\work>\u001b[5CDo you want to proceed?", false)]
     [InlineData("C:\\work>\u001b]0;title\u0007echo Do you want to proceed?", false)]
     public void ConPtyRepaintEncodingsStillPlaceThePromptAtLineStart(string output, bool blocked)

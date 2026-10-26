@@ -257,17 +257,16 @@ public sealed class DaemonAgentProtocolTests : IAsyncLifetime
     {
         var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state, Provider: "codex"));
         var id = created.SessionId!;
-        // 先等 Shell 开始读取命令：否则命令在 Shell 打印提示符之前就被回显，输出会接在提示符之后，批准提示不再位于行首。
-        Assert.True((await Client.CallAsync(new("input", id, Text: "echo SHELL_READY\r"))).Ok);
-        await WaitForLineAsync(id, "SHELL_READY");
+        await WaitForPromptAsync(id);
         await Client.CallAsync(new("agent-report", id, State: AgentActivityState.Done, Source: "hook", Reason: "Previous turn ended"));
         Assert.True((await Client.CallAsync(new("input", id, Text: "echo INPUT_ACTIVITY_MARKER\r"))).Ok);
         var working = (await Client.CallAsync(new("agent-state", id))).Activity!;
         Assert.Equal(AgentActivityState.Working, working.State);
         Assert.Equal("input", working.Source);
         Assert.Contains("submitted", working.Reason, StringComparison.OrdinalIgnoreCase);
-        // 上一条命令执行完、Shell 重新读取命令之后再输入下一条，同样是为了让输出从行首开始。
+        // 上一条命令执行完、Shell 重新打印提示符之后再输入下一条，批准提示才会从行首开始输出。
         await WaitForLineAsync(id, "INPUT_ACTIVITY_MARKER");
+        await WaitForPromptAsync(id);
         await Client.CallAsync(new("input", id, Text: "echo Do you want to proceed?\r"));
         var blocked = await Client.CallAsync(new("agent-wait", id, State: AgentActivityState.Blocked, TimeoutMilliseconds: 15000));
         Assert.True(blocked.Ok, blocked.Error);
@@ -295,9 +294,6 @@ public sealed class DaemonAgentProtocolTests : IAsyncLifetime
     public async Task PromptSubmissionStillAllowsLaterScreenApprovalToBecomeBlocked()
     {
         var id = await CreateAsync();
-        // 先等 Shell 开始读取命令：否则提示词在 Shell 打印提示符之前就被回显，命令输出会接在提示符之后，不再位于行首。
-        Assert.True((await Client.CallAsync(new("input", id, Text: "echo SHELL_READY\r"))).Ok);
-        await WaitForLineAsync(id, "SHELL_READY");
         Assert.True((await Client.CallAsync(new("agent-prompt", id, Text: "echo Do you want to proceed?"))).Ok);
         var blocked = await Client.CallAsync(new("agent-wait", id, State: AgentActivityState.Blocked, TimeoutMilliseconds: 15000));
         Assert.True(blocked.Ok, blocked.Error);
@@ -305,18 +301,44 @@ public sealed class DaemonAgentProtocolTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// 在状态目录中创建一个运行交互式 Shell（<see cref="TestShell.Interactive"/>）的会话并断言成功。
+    /// 在状态目录中创建一个运行交互式 Shell（<see cref="TestShell.Interactive"/>）的会话并断言成功，等 Shell 打印出提示符后返回。
     /// </summary>
     /// <returns>新会话的标识。</returns>
     private async Task<string> CreateAsync()
     {
         var created = await Client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: state));
         Assert.True(created.Ok, created.Error);
+        await WaitForPromptAsync(created.SessionId!);
         return created.SessionId!;
     }
 
     /// <summary>
-    /// 在 15 秒内每 40 毫秒读取一次会话屏幕，直到某一行去掉首尾空白后恰好等于期望文本（排除只出现在回显命令行中的情况）；超时则使测试失败。
+    /// 在 15 秒内每 40 毫秒读取一次会话屏幕，直到最后一个非空行以 Shell 提示符结尾（<c>&gt;</c>、<c>$</c> 或 <c>#</c>），即 Shell 已开始读取命令；
+    /// 超时则使测试失败并附上屏幕内容。
+    /// </summary>
+    /// <remarks>
+    /// 在 Linux / macOS 上，Shell 打印提示符之前键入的命令会立即被终端回显（连同换行），随后 Shell 才打印提示符并执行命令，
+    /// 命令输出于是接在提示符之后（例如 <c>$ MARKER</c>）而不是位于行首：既找不到独立的输出行，审批提示也不会被识别。
+    /// 每次键入命令之前等待提示符可以避免这一竞争。
+    /// </remarks>
+    /// <param name="id">会话标识。</param>
+    /// <returns>表示等待过程的任务。</returns>
+    private async Task WaitForPromptAsync(string id)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        var screen = "";
+        while (DateTime.UtcNow < deadline)
+        {
+            screen = (await Client.CallAsync(new("screen", id))).Text!;
+            var last = screen.Replace("\r", "").Split('\n').Select(item => item.TrimEnd()).LastOrDefault(item => item.Length > 0);
+            if (last is [.., '>' or '$' or '#']) return;
+            await Task.Delay(40);
+        }
+        Assert.Fail("Shell prompt did not appear. Screen:\n" + screen);
+    }
+
+    /// <summary>
+    /// 在 15 秒内每 40 毫秒读取一次会话屏幕，直到某一行去掉首尾空白后恰好等于期望文本（排除只出现在回显命令行中的情况）；超时则使测试失败并附上屏幕内容。
     /// </summary>
     /// <param name="id">会话标识。</param>
     /// <param name="line">期望出现的完整行。</param>
@@ -324,13 +346,14 @@ public sealed class DaemonAgentProtocolTests : IAsyncLifetime
     private async Task WaitForLineAsync(string id, string line)
     {
         var deadline = DateTime.UtcNow.AddSeconds(15);
+        var screen = "";
         while (DateTime.UtcNow < deadline)
         {
-            var screen = (await Client.CallAsync(new("screen", id))).Text!;
+            screen = (await Client.CallAsync(new("screen", id))).Text!;
             if (screen.Replace("\r", "").Split('\n').Any(item => item.Trim() == line)) return;
             await Task.Delay(40);
         }
-        Assert.Fail("Missing terminal output: " + line);
+        Assert.Fail("Missing terminal output: " + line + ". Screen:\n" + screen);
     }
 
     /// <summary>

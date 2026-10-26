@@ -73,8 +73,15 @@ public sealed class AgentTuiTests
             await Wait(() => ui.Screen.GetText().Contains("Waiting for Sender"), ui, "background state wait");
             await client.CallAsync(new("agent-report", a.SessionId, State: AgentActivityState.Done, Reason: "Coordination complete"));
             await Wait(() => ui.Screen.GetText().Contains("WAIT RESULT") && ui.Screen.GetText().Contains("Coordination complete"), ui, "wait completed");
-            ui.Write("\u001b"); await Task.Delay(200);
-            ui.Write("\u001b[21~"); await Wait(() => ui.HasExited, ui, "detach");
+            ui.Write("\u001b");
+            await Wait(() => !ui.Screen.GetText().Contains("WAIT RESULT"), ui, "wait result closed");
+            // 对话框关闭后工作台才重新位于最上层、接受 F10；负载高时关闭可能晚于按键，或 Esc 与紧随的 F10 被一起解析，未分离就重按。
+            for (var attempt = 0; attempt < 3 && !ui.HasExited; attempt++)
+            {
+                ui.Write("\u001b[21~");
+                for (var waited = 0; waited < 100 && !ui.HasExited; waited++) await Task.Delay(50);
+            }
+            await Wait(() => ui.HasExited, ui, "detach");
         }
         finally
         {
@@ -85,7 +92,7 @@ public sealed class AgentTuiTests
     }
 
     /// <summary>
-    /// 验证：用 Alt+5 聚焦侧栏并按下方向键选中第二个 Agent 后，该 Agent 上报 <c>Blocked</c> 使侧栏按优先级重排（出现 <c>[WAIT]</c>），
+    /// 验证：用 Alt+5 聚焦侧栏并按下方向键选中第二个 Agent 后，该 Agent 上报 <c>Blocked</c> 使侧栏按优先级重排（出现 <c>blocked</c>），
     /// 此时按 Enter 打开的仍是原先选中的会话，随后的键入落到第二个 Agent 的终端中，而不是落到重排后占据原位置的会话。
     /// </summary>
     [Fact]
@@ -118,7 +125,7 @@ public sealed class AgentTuiTests
     }
 
     /// <summary>
-    /// 验证：A 上报 <c>Done</c>、B 上报 <c>Blocked</c> 后侧栏同时显示 <c>[WAIT]</c> 与 <c>[DONE*]</c>，且 <c>[WAIT]</c> 排在前面；
+    /// 验证：A 上报 <c>Done</c>、B 上报 <c>Blocked</c> 后侧栏同时显示 <c>blocked</c> 与 <c>done</c>，且 <c>blocked</c> 排在前面；
     /// 在 <c>Agent: Notifications</c> 列表中筛选并打开 Review B 只把 B 的通知标为已读，A 的通知仍未读；再次打开这条已读通知只切换会话、不会报错；
     /// B 再次上报完成后界面显示新通知，<c>Agent: Mark selected as read</c> 使 B 的状态变为 <see cref="AgentActivityState.Idle"/>。
     /// </summary>

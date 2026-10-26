@@ -349,7 +349,7 @@ public sealed partial class AgentActivityStore
     {
         var value = match.ValueSpan;
         if (value[0] == '\r') return "\n";
-        if (value.Length < 2 || value[1] != '[') return "";
+        if (value.Length < 3 || value[1] != '[') return "";
         var parameter = value[2..^1];
         return value[^1] switch
         {
