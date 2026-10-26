@@ -1,4 +1,6 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
@@ -78,12 +80,27 @@ internal static class UnixPtyNative
     private static int resolverRegistered;
 
     /// <summary>
-    /// 注册库名解析器；可重复调用，只在第一次生效。必须在调用本类任何原生函数之前调用。
+    /// 注册库名解析器；可重复调用，只在第一次生效。
     /// </summary>
     internal static void EnsureResolver()
     {
         if (Interlocked.Exchange(ref resolverRegistered, 1) == 0)
             NativeLibrary.SetDllImportResolver(typeof(UnixPtyNative).Assembly, Resolve);
+    }
+
+    /// <summary>
+    /// 程序集加载时注册库名解析器（Linux / macOS）。
+    /// </summary>
+    /// <remarks>
+    /// 必须早于任何调用这些原生函数的方法被 JIT 编译：标记了 <see cref="SuppressGCTransitionAttribute"/> 的调用在编译调用方时就会绑定目标库，
+    /// 若此时解析器尚未注册，逻辑库名无法解析，调用方抛出 <see cref="DllNotFoundException"/>。模块初始化器保证这一顺序。
+    /// </remarks>
+    [ModuleInitializer]
+    [SuppressMessage("Usage", "CA2255:The 'ModuleInitializer' attribute should not be used in libraries",
+        Justification = "The resolver must be registered before the JIT binds SuppressGCTransition P/Invokes in callers.")]
+    internal static void RegisterResolverOnLoad()
+    {
+        if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS()) EnsureResolver();
     }
 
     /// <summary>
