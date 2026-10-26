@@ -290,6 +290,9 @@ public sealed class DaemonAgentProtocolTests : IAsyncLifetime
     public async Task PromptSubmissionStillAllowsLaterScreenApprovalToBecomeBlocked()
     {
         var id = await CreateAsync();
+        // 先等 Shell 开始读取命令：否则提示词在 Shell 打印提示符之前就被回显，命令输出会接在提示符之后，不再位于行首。
+        Assert.True((await Client.CallAsync(new("input", id, Text: "echo SHELL_READY\r"))).Ok);
+        await WaitForLineAsync(id, "SHELL_READY");
         Assert.True((await Client.CallAsync(new("agent-prompt", id, Text: "echo Do you want to proceed?"))).Ok);
         var blocked = await Client.CallAsync(new("agent-wait", id, State: AgentActivityState.Blocked, TimeoutMilliseconds: 15000));
         Assert.True(blocked.Ok, blocked.Error);
@@ -308,14 +311,14 @@ public sealed class DaemonAgentProtocolTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// 在 5 秒内每 40 毫秒读取一次会话屏幕，直到某一行去掉首尾空白后恰好等于期望文本（排除只出现在回显命令行中的情况）；超时则使测试失败。
+    /// 在 15 秒内每 40 毫秒读取一次会话屏幕，直到某一行去掉首尾空白后恰好等于期望文本（排除只出现在回显命令行中的情况）；超时则使测试失败。
     /// </summary>
     /// <param name="id">会话标识。</param>
     /// <param name="line">期望出现的完整行。</param>
     /// <returns>表示等待过程的任务。</returns>
     private async Task WaitForLineAsync(string id, string line)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(5);
+        var deadline = DateTime.UtcNow.AddSeconds(15);
         while (DateTime.UtcNow < deadline)
         {
             var screen = (await Client.CallAsync(new("screen", id))).Text!;
