@@ -24,7 +24,8 @@
 
 - **herdr 风格的工作台界面**：左侧侧栏分为 `spaces`（每个项目一行：汇总状态点、名称、Git 分支）与 `agents`
   （`◉ blocked` / `● working` / `● done` / `○ idle` 加“状态 · 程序”）；单击切换或显示、右键打开菜单、`+ new` 添加项目或启动 Agent。
-  标签栏改为“标签名 … `+`”，面板标题为 `名称  ◉ blocked · claude`；新增 `Ctrl+b` 前缀键；文件区与编辑器默认隐藏（F4 显示）。
+  标签栏改为“标签名 … `+`”，面板标题为 `名称  ◉ blocked · claude`；新增 `Ctrl+b` 前缀键（2 秒内有效）；文件区与编辑器默认隐藏（F4 显示）。
+  各项目的 Git 分支直接读取 `.git/HEAD`，在后台线程进行，不跟随指向网络共享或设备路径的 `gitdir:`，也不打开命名管道。
 - `ConPtySession` 标记为仅 Windows；跨平台代码通过 `ITerminalSession` 使用终端会话。
 - 新建自定义终端的默认命令：Windows 为 `cmd.exe`，Linux / macOS 为 `$SHELL`（未设置时为 `/bin/sh`）。
 - `ExecutableLocator` 在 Linux / macOS 上只接受有执行权限的文件。

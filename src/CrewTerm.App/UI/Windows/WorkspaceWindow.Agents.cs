@@ -75,6 +75,7 @@ public sealed partial class WorkspaceWindow
 
     /// <summary>
     /// 把会话显示到终端区并聚焦：必要时先切换到其所属项目；已显示在某个面板中时聚焦该面板，否则替换活动面板的会话。
+    /// 状态栏显示会话的工作目录。
     /// </summary>
     /// <param name="session">要显示的会话。</param>
     /// <returns>已显示并聚焦时为 <see langword="true"/>；用户因未保存修改取消切换项目时为 <see langword="false"/>。</returns>
@@ -85,6 +86,7 @@ public sealed partial class WorkspaceWindow
         var pane = terminalLayout.Panes.FirstOrDefault(p => p.SessionId == session.Id) ?? ActiveTerminal;
         pane.SessionId = session.Id; pane.Update(null); pane.SetFocus();
         settings.LastSessionId = session.Id; terminalLayout.SaveBindings();
+        status.Text = session.WorkingDirectory;
         return true;
     }
 
@@ -112,9 +114,10 @@ public sealed partial class WorkspaceWindow
         if (activity is null) return;
         Dialogs.Text(application, "AGENT STATUS · " + SessionName(id),
             $"State: {activity.State}\nSource: {activity.Source}\nReason: {activity.Reason}\nChanged: {activity.ChangedAt:O}\nRevision: {activity.Revision}\n\n" +
-            "WORK = explicit work in progress; WAIT = a user decision or input is required.\n" +
-            "DONE* = completion not yet acknowledged; IDLE = acknowledged completion.\n" +
-            "? = no reliable activity evidence. Process liveness alone does not imply work.");
+            "◉ blocked = a user decision or input is required; ● working = explicit work in progress.\n" +
+            "● done = completion not yet acknowledged; ○ idle = acknowledged completion or ready for input.\n" +
+            "○ unknown = no reliable activity evidence; ✕ exited = the process has ended.\n" +
+            "Process liveness alone does not imply work.");
     }
 
     /// <summary>

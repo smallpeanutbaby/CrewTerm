@@ -283,6 +283,7 @@ public sealed partial class WorkspaceWindow : Window
         ArrangePanels();
         fileList.Accepting += (_, e) => { e.Handled = true; Guard(OpenFileEntry); };
         application.Keyboard.KeyDown += GlobalKey;
+        application.Mouse.MouseEvent += CancelPrefixOnMouse;
         IsRunningChanging += (_, args) =>
         {
             if (args.NewValue || exitApproved) return;
@@ -352,7 +353,7 @@ public sealed partial class WorkspaceWindow : Window
     /// <para>
     /// 只在本窗口位于最上层（没有模态对话框）且尚未分离时生效。快捷键：F1 帮助、F2 添加项目、F3 新建 Agent、
     /// F4 显示/隐藏文件区、F5 保存、F6 Git、F7 后台任务、F8 切换分屏、F9 与 Ctrl+Shift+P 命令面板、F10 分离；
-    /// Ctrl+Shift+V 粘贴、Ctrl+Shift+C 复制选区；Alt+1/Alt+2 聚焦第一/第二个终端，Alt+3 编辑器，Alt+4 文件列表，Alt+5 会话列表。
+    /// Ctrl+Shift+V 粘贴、Ctrl+Shift+C 复制选区；Alt+1/Alt+2 聚焦第一/第二个终端，Alt+3 编辑器，Alt+4 文件列表，Alt+5 侧栏 agents（侧栏隐藏时先显示）；Ctrl+b 前缀键见 <see cref="HandlePrefix"/>。
     /// </para>
     /// <para>
     /// 快捷键操作在 <see cref="Guard"/> 中执行。不是快捷键时，若某个终端面板拥有焦点且按键可以编码，
@@ -386,7 +387,7 @@ public sealed partial class WorkspaceWindow : Window
         if (key == Key.D2.WithAlt) action = () => { if (terminalLayout.Panes.Count > 1) secondary.SetFocus(); };
         if (key == Key.D3.WithAlt) action = () => { ShowFiles(); editor.View.SetFocus(); };
         if (key == Key.D4.WithAlt) action = () => { ShowFiles(); fileList.SetFocus(); };
-        if (key == Key.D5.WithAlt) action = () => agentSection.SetFocus();
+        if (key == Key.D5.WithAlt) action = () => FocusSidebar(agentSection);
         if (action is not null) { key.Handled = true; Guard(action); return; }
         // 终端拥有焦点时，Ctrl+C、Ctrl+Q、Esc 与 Tab 都归终端所有（发给子程序），而不是交给 Terminal.Gui 处理。
         var terminal = terminalLayout.Panes.FirstOrDefault(p => p.HasFocus);
@@ -482,14 +483,15 @@ public sealed partial class WorkspaceWindow : Window
     /// </summary>
     /// <param name="pane">要显示标题的面板。</param>
     /// <returns>
-    /// 会话在最近的会话列表中时为 “名称  状态符号 状态 · 程序”（例如 <c>reviewer  ◉ blocked · claude</c>）；面板未绑定会话时为 “TERMINAL · F3 New”；
+    /// 会话在最近的会话列表中时为 “名称  状态符号 状态 · 程序”（例如 <c>reviewer  ◉ blocked · claude</c>，同名会话附上标识前 6 位，见 <see cref="DisplayName"/>）；
+    /// 面板未绑定会话时为 “TERMINAL · F3 New”；
     /// 绑定的会话已不在列表中（例如 daemon 重启后只剩保存的记录）时为 “SAVED SESSION · F9 Resume”。
     /// </returns>
     private string SessionTitle(TerminalPane pane)
     {
         var session = sessions.FirstOrDefault(s => s.Id == pane.SessionId);
         return session is null ? (pane.SessionId is null ? "TERMINAL  ·  F3 New" : "SAVED SESSION  ·  F9 Resume")
-            : $"{session.Name}  {AgentStateStyle.For(session).Glyph} {AgentStateStyle.Describe(session)}";
+            : $"{DisplayName(session)}  {AgentStateStyle.For(session).Glyph} {AgentStateStyle.Describe(session)}";
     }
 
     /// <summary>
@@ -762,6 +764,7 @@ public sealed partial class WorkspaceWindow : Window
         {
             detached = true;
             application.Keyboard.KeyDown -= GlobalKey;
+            application.Mouse.MouseEvent -= CancelPrefixOnMouse;
             if (refreshTimer is not null) application.RemoveTimeout(refreshTimer);
             InputDrained = inputDispatcher.CompleteAndDrainAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
             inputDispatcher.Dispose();

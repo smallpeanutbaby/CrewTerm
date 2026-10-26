@@ -6,7 +6,7 @@ namespace CrewTerm.App.Tests.Tui;
 
 /// <summary>
 /// 工作区界面的冒烟测试：在伪终端中启动真实的 <c>crewterm</c> 可执行文件，连接独立临时状态目录中的真实 daemon，
-/// 覆盖多客户端布局保存冲突、命令面板与新建终端向导、跨项目会话选择的持久化、任务菜单、编辑器保存与未保存保护、分割终端的输入路由，以及帮助窗口与分离。
+/// 覆盖多客户端布局保存冲突、命令面板与新建终端向导、跨项目会话选择的持久化、单击空间与侧栏 Esc 后的焦点、任务菜单、编辑器保存与未保存保护、分割终端的输入路由，以及帮助窗口与分离。
 /// </summary>
 [Collection(TuiCollection.Name)]
 public sealed class TuiSmokeTests
@@ -146,6 +146,50 @@ public sealed class TuiSmokeTests
             await WaitUntil(() => explicitlySelected.Screen.GetText().Contains("F3 starts a terminal."), explicitlySelected, "explicit project must not bind saved session from another root");
             explicitlySelected.Write("\u001b[21~");
             await WaitUntil(() => explicitlySelected.HasExited, explicitlySelected, "explicit project detach");
+        }
+        finally
+        {
+            try { await client.CallAsync(new("stop")); } catch (Exception e) when (e is IOException or TimeoutException or OperationCanceledException) { }
+            await TestStateDirectory.DeleteAsync(state);
+        }
+    }
+
+    /// <summary>
+    /// 验证：在侧栏 <c>spaces</c> 中单击另一个项目会切换到该项目并把焦点交给终端——随后直接键入的命令送达该项目的会话；
+    /// 用 Alt+5 聚焦侧栏 <c>agents</c> 后按 Esc 只把焦点还给终端，工作台不会因 Terminal.Gui 默认的 Esc 退出命令而分离，之后键入的命令同样送达会话。
+    /// </summary>
+    [Fact]
+    public async Task ClickingASpaceHandsFocusToTheTerminalAndEscapeLeavesTheSidebar()
+    {
+        var root = CrewTermBuild.Repository;
+        var executable = CrewTermBuild.Executable;
+        var state = Path.Combine(Path.GetTempPath(), "CrewTermTui", Guid.NewGuid().ToString("N"));
+        var a = Path.Combine(state, "project-a");
+        var b = Path.Combine(state, "project-b");
+        Directory.CreateDirectory(a); Directory.CreateDirectory(b);
+        var catalog = new CrewTerm.Core.Projects.ProjectCatalog(state);
+        catalog.Add(a); catalog.Add(b); catalog.Save();
+        var client = new DaemonClient(state);
+        try
+        {
+            using var terminal = TerminalSession.Start("space-focus-ui", $"\"{executable}\" --state-dir \"{state}\" --project \"{a}\"", root, 150, 45);
+            await WaitUntil(() => terminal.Screen.GetText().Contains("F10 Detach") && terminal.Screen.GetText().Contains("project-b"), terminal, "ready workspace with two spaces");
+            var session = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: b, Name: "Agent B"));
+            await WaitUntil(() => terminal.Screen.GetText().Contains("Agent B"), terminal, "B session in sidebar");
+            // 窗口边框占第 0 行与第 0 列：spaces 标题在第 1 行，project-a 在第 2 行，project-b 在第 3 行（SGR 坐标从 1 开始）。
+            terminal.Write("\u001b[<0;6;4M\u001b[<0;6;4m");
+            await WaitUntil(() => terminal.Screen.GetText().Contains(b) && terminal.Screen.GetText().Contains("┤Agent B"), terminal, "B space shows its agent");
+            terminal.Write("echo AFTER_SPACE_CLICK\r");
+            await WaitForSessionText(client, session.SessionId!, "AFTER_SPACE_CLICK", terminal);
+            await RetryUntil(terminal, () => { terminal.Write("\u001b5"); return Task.Delay(300); },
+                () => terminal.Screen.Snapshot() is { CursorVisible: false });
+            terminal.Write("\u001b");
+            await Task.Delay(500);
+            Assert.False(terminal.HasExited, "Esc in the sidebar must not detach the workspace.");
+            terminal.Write("echo AFTER_SIDEBAR_ESC\r");
+            await WaitForSessionText(client, session.SessionId!, "AFTER_SIDEBAR_ESC", terminal);
+            terminal.Write("\u001b[21~");
+            await WaitUntil(() => terminal.HasExited, terminal, "detach");
         }
         finally
         {

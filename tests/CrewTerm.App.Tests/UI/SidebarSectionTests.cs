@@ -6,8 +6,9 @@ using Terminal.Gui.ViewBase;
 namespace CrewTerm.App.Tests.UI;
 
 /// <summary>
-/// 覆盖 <see cref="SidebarSection"/>：按显示宽度截断文本、鼠标单击新建按钮 / 占位提示 / 行、右键菜单与键盘选择。
-/// 视图放在一个 30×8 的宿主中完成布局，事件以真实的视图鼠标与键盘事件投递。
+/// 覆盖 <see cref="SidebarSection"/>：按显示宽度截断文本、鼠标单击新建按钮 / 占位提示 / 行、右键菜单、键盘选择、滚轮滚动、
+/// 按绘制出来的行判断点击，以及 Esc 把焦点还给终端。
+/// 视图放在一个 30×8 的宿主中完成布局（标题一行，可见 7 行），事件以真实的视图鼠标与键盘事件投递。
 /// </summary>
 public sealed class SidebarSectionTests
 {
@@ -41,24 +42,24 @@ public sealed class SidebarSectionTests
     }
 
     /// <summary>
-    /// 验证：左键单击一行会选中并激活该行，右键单击打开该行的菜单；方向键移动选择，Enter 激活选中行。
+    /// 验证：左键单击一行会选中并激活该行，右键单击打开该行的菜单；方向键移动选择，Enter 激活选中行。回调收到的是行本身（按键找回对象）。
     /// </summary>
     [Fact]
     public void RowsActivateByClickAndKeyboardAndOpenMenusOnRightClick()
     {
         var (host, section) = Create();
         using var _ = host;
-        var activated = new List<int>();
-        var menus = new List<int>();
-        section.RowActivated = activated.Add;
-        section.ContextRequested = menus.Add;
+        var activated = new List<string>();
+        var menus = new List<string>();
+        section.RowActivated = row => activated.Add(row.Key);
+        section.ContextRequested = row => menus.Add(row.Key);
         section.SetRows([Row("alpha"), Row("bravo"), Row("charlie")]);
         Click(section, new(5, 2));
         section.NewMouseEvent(new Mouse { View = section, Position = new(5, 3), ScreenPosition = new(5, 3), Flags = MouseFlags.RightButtonPressed });
         section.NewKeyDownEvent(Key.CursorUp);
         section.NewKeyDownEvent(Key.Enter);
-        Assert.Equal([1, 1], activated);
-        Assert.Equal([2], menus);
+        Assert.Equal(["bravo", "bravo"], activated);
+        Assert.Equal(["charlie"], menus);
         Assert.Equal(1, section.SelectedIndex);
     }
 
@@ -75,6 +76,64 @@ public sealed class SidebarSectionTests
         Assert.Equal(1, section.SelectedIndex);
         section.SetRows([Row("x"), Row("y"), Row("z")], select: 0);
         Assert.Equal(0, section.SelectedIndex);
+    }
+
+    /// <summary>
+    /// 验证：行数多于可见行时滚轮向下滚动 3 行，随后的周期刷新（同样的行与选择）和重绘都不会把列表拉回选中行；
+    /// 用方向键移动选择后才滚动到选中行。行数变少时越界的滚动位置被收回。
+    /// </summary>
+    [Fact]
+    public void WheelScrollingSurvivesRefreshAndRedraw()
+    {
+        var (host, section) = Create();
+        using var _ = host;
+        var rows = Enumerable.Range(0, 12).Select(i => Row("row" + i)).ToArray();
+        section.SetRows(rows, select: 0);
+        section.NewMouseEvent(new Mouse { View = section, Position = new(5, 3), ScreenPosition = new(5, 3), Flags = MouseFlags.WheeledDown });
+        Assert.Equal(3, section.FirstVisibleIndex);
+        section.SetRows(rows, select: 0);
+        host.Draw();
+        Assert.Equal(3, section.FirstVisibleIndex);
+        section.NewKeyDownEvent(Key.CursorDown);
+        Assert.Equal(1, section.FirstVisibleIndex);
+        section.SetRows(rows[..3], select: 1);
+        Assert.Equal(0, section.FirstVisibleIndex);
+    }
+
+    /// <summary>
+    /// 验证：行在最近一次绘制之后被重新排序（例如某个 Agent 变为等待决定而排到最前），点击仍然命中用户看到的那一行；
+    /// 下一次绘制之后按新的顺序命中。
+    /// </summary>
+    [Fact]
+    public void ClicksHitTheRowsAsLastDrawn()
+    {
+        var (host, section) = Create();
+        using var _ = host;
+        var activated = new List<string>();
+        section.RowActivated = row => activated.Add(row.Key);
+        section.SetRows([Row("alpha"), Row("bravo"), Row("charlie")]);
+        host.Draw();
+        section.SetRows([Row("charlie"), Row("alpha"), Row("bravo")]);
+        Click(section, new(5, 1));
+        Assert.Equal(["alpha"], activated);
+        Assert.Equal(1, section.SelectedIndex);
+        host.Draw();
+        Click(section, new(5, 1));
+        Assert.Equal(["alpha", "charlie"], activated);
+    }
+
+    /// <summary>
+    /// 验证：在分区中按 Esc 请求把焦点还给终端，并且按键被处理（不会落到 Terminal.Gui 默认的“退出”命令上导致分离）。
+    /// </summary>
+    [Fact]
+    public void EscapeReturnsFocusInsteadOfQuitting()
+    {
+        var (host, section) = Create();
+        using var _ = host;
+        var returned = 0;
+        section.FocusReturnRequested = () => returned++;
+        Assert.True(section.NewKeyDownEvent(Key.Esc));
+        Assert.Equal(1, returned);
     }
 
     /// <summary>
@@ -99,9 +158,9 @@ public sealed class SidebarSectionTests
         section.NewMouseEvent(new Mouse { View = section, Position = point, ScreenPosition = point, Flags = MouseFlags.LeftButtonPressed });
 
     /// <summary>
-    /// 创建一个测试行。
+    /// 创建一个测试行，名称同时作为行的键。
     /// </summary>
     /// <param name="title">名称。</param>
     /// <returns>侧栏行。</returns>
-    private static SidebarRow Row(string title) => new("○", 0x9399b2, title, "main", false);
+    private static SidebarRow Row(string title) => new(title, "○", 0x9399b2, title, "main", false);
 }

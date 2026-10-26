@@ -322,7 +322,7 @@ public sealed class TerminalLayoutView : View
     /// </summary>
     /// <remarks>
     /// 每个标签按名称宽度占 4–24 列，从左到右紧密排列，<c>+</c> 紧跟在最后一个可见标签之后，面板数提示靠右。
-    /// 放不下时从第一个标签开始显示尽可能多的标签；活动标签超出这一段时改为显示以活动标签结尾的一段连续标签，其余标签隐藏。
+    /// 放不下时显示包含活动标签的一段连续标签（规则见 <see cref="TabStripLayout.VisibleRange"/>），其余标签隐藏。
     /// 标签栏尚无子视图时什么也不做；子视图顺序必须与 <see cref="BuildTabs"/> 创建的一致。
     /// </remarks>
     private void ArrangeTabs()
@@ -333,14 +333,12 @@ public sealed class TerminalLayoutView : View
         var widths = layout.Tabs.Select((_, i) => Math.Clamp(views[i].Text.GetColumns(), 4, 24)).ToArray();
         var room = Math.Max(0, width - 3 - CountWidth);
         var active = Math.Max(0, layout.Tabs.FindIndex(t => t.Id == layout.ActiveTabId));
-        // 先从第一个标签开始尽量放；放不下活动标签时，改为以活动标签结尾向前放。
-        var start = 0;
-        while (start < active && widths.Skip(start).Take(active - start + 1).Sum() > room) start++;
+        var (start, shown) = TabStripLayout.VisibleRange(widths, room, active);
         var x = 0;
         for (var i = 0; i < layout.Tabs.Count; i++)
         {
             var view = views[i];
-            view.Visible = i >= start && x + widths[i] <= Math.Max(room, widths[start]);
+            view.Visible = i >= start && i < start + shown;
             view.X = x; view.Y = 0; view.Width = widths[i];
             if (view.Visible) x += widths[i];
         }
