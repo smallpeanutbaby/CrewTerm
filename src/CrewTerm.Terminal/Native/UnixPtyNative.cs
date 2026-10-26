@@ -8,7 +8,7 @@ namespace CrewTerm.Terminal.Native;
 /// Linux 与 macOS 伪终端所需的 libc P/Invoke 声明和常量。
 /// </summary>
 /// <remarks>
-/// <para>库名经 <see cref="NativeLibrary.SetDllImportResolver"/> 映射：Linux 为 <c>libc.so.6</c>（<c>forkpty</c> 优先取
+/// <para>库名经 <see cref="NativeLibrary.SetDllImportResolver"/> 映射（首次使用前调用 <see cref="EnsureResolver"/> 注册）：Linux 为 <c>libc.so.6</c>（<c>forkpty</c> 优先取
 /// <c>libutil.so.1</c>，兼容 glibc 2.34 之前把它放在 libutil 中的系统），macOS 为 <c>libSystem</c>。</para>
 /// <para><c>fork</c> 之后子进程只调用标记了 <see cref="SuppressGCTransitionAttribute"/> 的函数：这些调用不切换 GC 模式，
 /// 不会在子进程中等待父进程里其他线程持有的运行时锁；它们的入口在 fork 之前由 <see cref="PrepareChildCalls"/> 预先绑定。</para>
@@ -50,14 +50,41 @@ internal static class UnixPtyNative
     internal const int WaitNoHang = 1;
 
     /// <summary>
+    /// <c>EINTR</c>（Linux 与 macOS 均为 4）：系统调用被信号中断，应重试。
+    /// </summary>
+    internal const int ErrorInterrupted = 4;
+
+    /// <summary>
+    /// <c>ECHILD</c>（Linux 与 macOS 均为 10）：指定的子进程不存在或已被回收。
+    /// </summary>
+    internal const int ErrorNoChild = 10;
+
+    /// <summary>
     /// 足以容纳任何平台 <c>sigset_t</c> 的字节数（Linux glibc 为 128 字节，macOS 为 4 字节）。
     /// </summary>
     internal const int SignalSetBytes = 128;
 
     /// <summary>
-    /// 注册库名解析器。
+    /// fork 之后子进程恢复默认处理的信号编号上限（1–31，覆盖 Linux 与 macOS 的全部标准信号）。
     /// </summary>
-    static UnixPtyNative() => NativeLibrary.SetDllImportResolver(typeof(UnixPtyNative).Assembly, Resolve);
+    internal const int StandardSignalCount = 31;
+
+    /// <summary>
+    /// 是否已注册库名解析器（0 / 1）。
+    /// </summary>
+    /// <remarks>
+    /// 不使用静态构造函数：本类因此没有类型初始化检查，fork 之后的子进程调用这里的函数时不会进入运行时。
+    /// </remarks>
+    private static int resolverRegistered;
+
+    /// <summary>
+    /// 注册库名解析器；可重复调用，只在第一次生效。必须在调用本类任何原生函数之前调用。
+    /// </summary>
+    internal static void EnsureResolver()
+    {
+        if (Interlocked.Exchange(ref resolverRegistered, 1) == 0)
+            NativeLibrary.SetDllImportResolver(typeof(UnixPtyNative).Assembly, Resolve);
+    }
 
     /// <summary>
     /// <c>sigprocmask</c> 的 <c>SIG_SETMASK</c>：Linux 为 2，macOS 为 3。
@@ -267,6 +294,7 @@ internal static class UnixPtyNative
     /// </summary>
     internal static void PrepareChildCalls()
     {
+        EnsureResolver();
         foreach (var name in new[] { nameof(ForkPty), nameof(ChangeDirectory), nameof(Execute), nameof(ExitImmediately), nameof(SetSignalHandler), nameof(SetSignalMask) })
             Marshal.Prelink(typeof(UnixPtyNative).GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic)!);
     }

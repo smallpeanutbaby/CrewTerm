@@ -80,7 +80,7 @@ public sealed class CliIntegrationTests : IAsyncLifetime
         var listed = ReadResponse(await RunAsync("sessions"));
         var session = Assert.Single(listed.Sessions!, item => item.Id == id);
         Assert.Equal("CLI shell", session.Name);
-        Assert.Equal(Project, session.WorkingDirectory);
+        Assert.Equal(CanonicalPath.Of(Project), CanonicalPath.Of(session.WorkingDirectory));
         Assert.False(session.HasExited);
 
         ReadResponse(await RunAsync("close", id));
@@ -114,12 +114,12 @@ public sealed class CliIntegrationTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// 验证：后台命令 <c>exit /b 7</c> 失败时，启动和查询它的 CLI 请求本身仍然成功（退出码 0），任务信息中记录的是命令自己的退出码 7 且未取消。
+    /// 验证：后台命令以退出码 7 失败（<see cref="TestShell.ExitStep"/>）时，启动和查询它的 CLI 请求本身仍然成功（退出码 0），任务信息中记录的是命令自己的退出码 7 且未取消。
     /// </summary>
     [Fact]
     public async Task FailedBackgroundCommandKeepsItsExitCodeSeparateFromCliRequestSuccess()
     {
-        var started = ReadResponse(await RunAsync("run", "--command", "exit /b 7", "--project", Project));
+        var started = ReadResponse(await RunAsync("run", "--command", TestShell.ExitStep(7), "--project", Project));
         var finished = await WaitForTaskAsync(started.SessionId!);
         Assert.Equal(7, finished.ExitCode);
         Assert.False(finished.Cancelled);
@@ -183,7 +183,7 @@ public sealed class CliIntegrationTests : IAsyncLifetime
     {
         var created = ReadResponse(await RunAsync("new", "--command", TestShell.Interactive, "--project", ".", "--name", "relative"));
         var session = Assert.Single(ReadResponse(await RunAsync("sessions")).Sessions!, item => item.Id == created.SessionId);
-        Assert.Equal(Project, session.WorkingDirectory);
+        Assert.Equal(CanonicalPath.Of(Project), CanonicalPath.Of(session.WorkingDirectory));
         ReadResponse(await RunAsync("close", created.SessionId!));
     }
 

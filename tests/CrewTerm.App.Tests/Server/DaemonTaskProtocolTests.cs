@@ -95,7 +95,7 @@ public sealed class DaemonTaskProtocolTests : IAsyncLifetime
     {
         var client = new DaemonClient(state);
         var response = await client.CallAsync(new("pipeline-start", Name: "checks", Steps:
-        [new("fail", "echo failure & exit /b 7", state), new("never", "echo bad > marker", state)]));
+        [new("fail", TestShell.Sequence("echo failure", TestShell.ExitStep(7)), state), new("never", "echo bad > marker", state)]));
         Assert.True(response.Ok, response.Error);
         var completed = await WaitForTaskAsync(client, response.SessionId!, info => info.Completed);
         Assert.Equal(7, completed.ExitCode);

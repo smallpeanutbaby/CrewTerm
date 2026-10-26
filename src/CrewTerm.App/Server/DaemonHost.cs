@@ -19,7 +19,7 @@ namespace CrewTerm.App.Server;
 /// <remarks>
 /// <list type="bullet">
 /// <item><description>每个状态目录只运行一个 daemon：<see cref="RunAsync"/> 期间以独占方式打开 <see cref="StateFiles.ServerLock"/>。</description></item>
-/// <item><description>管道只允许当前 Windows 用户连接，最多同时处理 16 个连接；每个连接只交换一条请求和一条响应（见 <see cref="PipeProtocol"/>）。</description></item>
+/// <item><description>管道（Linux / macOS 上为 Unix 域套接字）只允许当前用户连接，最多同时处理 16 个连接，并始终保留一个监听实例；每个连接只交换一条请求和一条响应（见 <see cref="PipeProtocol"/>）。</description></item>
 /// <item><description>终端进程属于 daemon 而不是某个 UI 客户端：客户端退出后会话继续运行，之后可以重新连接。</description></item>
 /// <item><description>请求处理是并发的：<c>sessions</c> 是并发字典，读取无需加锁；会话集合的变更与会话记录的持久化由 <c>changeLock</c> 串行化。</description></item>
 /// <item><description>分部文件：<c>DaemonHost.Agents.cs</c>（Agent 状态、提示词与消息）、<c>DaemonHost.Hooks.cs</c>（Provider hook 回调）、
@@ -52,9 +52,15 @@ public sealed partial class DaemonHost : IDisposable
     private readonly object changeLock = new();
 
     /// <summary>
-    /// 同时处理的连接数上限（16，与管道实例上限一致）。监听循环先取得名额再创建管道实例，连接处理结束后归还。
+    /// 同时处理的连接数上限。
     /// </summary>
-    private readonly SemaphoreSlim connectionSlots = new(16, 16);
+    private const int MaxConnections = 16;
+
+    /// <summary>
+    /// 同时处理的连接名额（<see cref="MaxConnections"/> 个）。监听循环先取得名额再接受连接，连接处理结束后归还；
+    /// 管道实例上限为名额数加 1，多出的一个是始终存在的监听实例。
+    /// </summary>
+    private readonly SemaphoreSlim connectionSlots = new(MaxConnections, MaxConnections);
 
     /// <summary>
     /// 后台命令任务与流水线的调度、执行与历史记录。
@@ -150,20 +156,24 @@ public sealed partial class DaemonHost : IDisposable
         {
             LoadNativeCatalog();
             activityMonitor = MonitorActivityAsync(linked.Token);
-            while (!linked.IsCancellationRequested)
+            var listener = CreateListener();
+            try
             {
-                await connectionSlots.WaitAsync(linked.Token);
-                NamedPipeServerStream? pipe = null;
-                try
+                while (!linked.IsCancellationRequested)
                 {
-                    pipe = new NamedPipeServerStream(PipeProtocol.PipeName(stateDirectory), PipeDirection.InOut,
-                        16, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-                    await pipe.WaitForConnectionAsync(linked.Token);
+                    await connectionSlots.WaitAsync(linked.Token);
+                    try { await listener.WaitForConnectionAsync(linked.Token); }
+                    catch { connectionSlots.Release(); throw; }
+                    var connected = listener;
+                    // 先创建下一个监听实例，再处理这个连接。Linux / macOS 上同名的管道实例共用一个监听套接字，最后一个实例释放时
+                    // 套接字被关闭并删除：快速完成的请求若在新实例创建前就释放了自己的实例，排队中的客户端连接会被重置。
+                    try { listener = CreateListener(); }
+                    catch { connected.Dispose(); connectionSlots.Release(); throw; }
+                    handlers.RemoveAll(t => t.IsCompleted);
+                    handlers.Add(HandleConnectionSlotAsync(connected, linked.Token));
                 }
-                catch { pipe?.Dispose(); connectionSlots.Release(); throw; }
-                handlers.RemoveAll(t => t.IsCompleted);
-                handlers.Add(HandleConnectionSlotAsync(pipe, linked.Token));
             }
+            finally { await listener.DisposeAsync(); }
         }
         catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
         finally
@@ -189,6 +199,15 @@ public sealed partial class DaemonHost : IDisposable
         try { await HandleConnectionAsync(pipe, token); }
         finally { connectionSlots.Release(); }
     }
+
+    /// <summary>
+    /// 创建一个等待连接的管道实例：只允许当前用户连接，实例上限为 <see cref="MaxConnections"/> 加 1（处理中的连接与一个监听实例）。
+    /// </summary>
+    /// <returns>新的管道实例。</returns>
+    /// <exception cref="IOException">实例数已达上限或管道无法创建。</exception>
+    private NamedPipeServerStream CreateListener()
+        => new(PipeProtocol.PipeName(stateDirectory), PipeDirection.InOut, MaxConnections + 1,
+            PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 
     /// <summary>
     /// 在一个连接上读取一行 JSON 请求、执行并写回一行 JSON 响应，然后关闭管道。

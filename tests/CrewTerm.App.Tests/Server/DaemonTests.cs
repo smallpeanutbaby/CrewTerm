@@ -137,7 +137,7 @@ public sealed class DaemonTests : IAsyncLifetime
                 var pipe = new System.IO.Pipes.NamedPipeClientStream(".", PipeProtocol.PipeName(state),
                     System.IO.Pipes.PipeDirection.InOut, System.IO.Pipes.PipeOptions.Asynchronous);
                 held.Add(pipe);
-                await pipe.ConnectAsync(2000);
+                await pipe.ConnectAsync(10000);
             }
             await Task.Delay(150);
         }

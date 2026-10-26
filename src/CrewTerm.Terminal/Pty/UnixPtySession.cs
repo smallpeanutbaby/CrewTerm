@@ -17,7 +17,10 @@ namespace CrewTerm.Terminal.Pty;
 /// <item><description>命令经 <c>/bin/sh -c "exec …"</c> 执行：Shell 只负责解析引号与参数，随后被目标程序替换，进程标识即程序本身。</description></item>
 /// <item><description>释放时先向整个进程组发送 <c>SIGHUP</c>，宽限期后发送 <c>SIGKILL</c>，并回收子进程，不留下僵尸进程。
 /// 自行创建新会话或进程组的后代进程不在此范围内。</description></item>
-/// <item><description>写入、resize、退出状态查询与释放由同一把锁串行化，可以从任意线程调用。</description></item>
+/// <item><description>resize、退出状态查询与释放由同一把锁串行化，可以从任意线程调用；写入另用一把锁，
+/// 子程序不读取输入、内核缓冲区写满而阻塞时，不会妨碍查询状态或结束会话（结束进程组后阻塞的写入以 I/O 错误返回）。</description></item>
+/// <item><description>已知限制：<c>forkpty</c> 与随后设置 close-on-exec 之间（微秒级），若本进程中其他代码恰好通过
+/// <see cref="System.Diagnostics.Process"/> 启动程序，该程序可能继承这个伪终端；会话之间的启动已串行化，不受影响。</description></item>
 /// </list>
 /// </remarks>
 [SupportedOSPlatform("linux")]
@@ -45,9 +48,14 @@ public sealed class UnixPtySession : ITerminalSession
     private static readonly object ForkGate = new();
 
     /// <summary>
-    /// 保护进程状态、写入与释放的锁。
+    /// 保护进程状态、resize 与释放的锁。
     /// </summary>
     private readonly object _gate = new();
+
+    /// <summary>
+    /// 串行化写入主设备的锁；与 <see cref="_gate"/> 分开，阻塞的写入不会阻塞状态查询与释放。
+    /// </summary>
+    private readonly object _writeGate = new();
 
     /// <summary>
     /// 主设备文件描述符。
@@ -70,9 +78,9 @@ public sealed class UnixPtySession : ITerminalSession
     private readonly Thread _reader;
 
     /// <summary>
-    /// 是否已释放。
+    /// 是否已释放（在 <see cref="_gate"/> 内设置，写入时不持有该锁而以易失方式读取）。
     /// </summary>
-    private bool _disposed;
+    private volatile bool _disposed;
 
     /// <summary>
     /// 子进程是否已被回收（之后不能再对该进程标识调用 <c>waitpid</c> 或发送信号）。
@@ -171,6 +179,8 @@ public sealed class UnixPtySession : ITerminalSession
         var childEnvironment = block.Environment;
         var directory = block.Directory;
         var emptySignalSet = block.EmptySignalSet;
+        var blockedSignalSet = block.BlockedSignalSet;
+        var savedSignalSet = block.SavedSignalSet;
         var setMask = UnixPtyNative.SignalSetMask;
         UnixPtyNative.PrepareChildCalls();
         int pid, master;
@@ -178,16 +188,21 @@ public sealed class UnixPtySession : ITerminalSession
         // 可以读写本会话的终端，并使从设备在本会话结束后仍不关闭。串行化启动，保证设置完成后才可能有下一次 fork。
         lock (ForkGate)
         {
+            // fork 期间屏蔽信号，子进程继承这个屏蔽字：在恢复默认处理之前，子进程即使收到信号也不会运行继承来的 .NET 信号处理程序
+            // （它会把信号写入与 daemon 共用的管道，被 daemon 当作自己收到的信号处理）。
+            UnixPtyNative.SetSignalMask(setMask, blockedSignalSet, savedSignalSet);
             pid = UnixPtyNative.ForkPty(out master, IntPtr.Zero, IntPtr.Zero, ref size);
             if (pid == 0)
             {
-                UnixPtyNative.SetSignalHandler(UnixPtyNative.SignalPipe, IntPtr.Zero);
+                for (var signal = 1; signal <= UnixPtyNative.StandardSignalCount; signal++) UnixPtyNative.SetSignalHandler(signal, IntPtr.Zero);
                 UnixPtyNative.SetSignalMask(setMask, emptySignalSet, IntPtr.Zero);
                 UnixPtyNative.ChangeDirectory(directory);
                 UnixPtyNative.Execute(program, arguments, childEnvironment);
                 UnixPtyNative.ExitImmediately(127);
             }
-            if (pid < 0) throw new Win32Exception(Marshal.GetLastSystemError(), "forkpty failed");
+            var forkError = Marshal.GetLastSystemError();
+            UnixPtyNative.SetSignalMask(setMask, savedSignalSet, IntPtr.Zero);
+            if (pid < 0) throw new Win32Exception(forkError, "forkpty failed");
             UnixPtyNative.SetCloseOnExec(master);
         }
         try { return new UnixPtySession(id, commandLine, cwd, columns, rows, master, pid); }
@@ -234,7 +249,12 @@ public sealed class UnixPtySession : ITerminalSession
             ObjectDisposedException.ThrowIf(_disposed, this);
             RefreshExitCode();
             if (_reaped) throw new InvalidOperationException("The terminal process has exited.");
-            _input.Write(Screen.EncodeInput(text));
+        }
+        var bytes = Screen.EncodeInput(text);
+        lock (_writeGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _input.Write(bytes);
         }
     }
 
@@ -264,15 +284,17 @@ public sealed class UnixPtySession : ITerminalSession
     private void Reap(int options)
     {
         if (_reaped) return;
-        var result = UnixPtyNative.WaitProcess(ProcessId, out var status, options);
+        int result, status;
+        do result = UnixPtyNative.WaitProcess(ProcessId, out status, options);
+        while (result < 0 && Marshal.GetLastPInvokeError() == UnixPtyNative.ErrorInterrupted);
         if (result == ProcessId)
         {
             _reaped = true;
             var signal = status & 0x7f;
             _exitCode = signal == 0 ? (status >> 8) & 0xff : 128 + signal;
         }
-        // 子进程已被他人回收（ECHILD）：视为已退出，退出码未知。
-        else if (result < 0) _reaped = true;
+        // 子进程已被他人回收（ECHILD）：视为已退出，退出码未知。其他错误保持未回收，下次查询重试。
+        else if (result < 0 && Marshal.GetLastPInvokeError() == UnixPtyNative.ErrorNoChild) _reaped = true;
     }
 
     /// <summary>
@@ -330,7 +352,12 @@ public sealed class UnixPtySession : ITerminalSession
                     Reap(0);
                 }
             }
-            _input.Dispose();
+        }
+        // 进程组已结束，阻塞中的写入随之失败并释放写锁；若脱离进程组的后代仍持有从设备而迟迟不返回，就不等待它（写入流不拥有文件描述符）。
+        if (Monitor.TryEnter(_writeGate, DisposeWaitMilliseconds))
+        {
+            try { _input.Dispose(); }
+            finally { Monitor.Exit(_writeGate); }
         }
         if (Thread.CurrentThread != _reader) _reader.Join(DisposeWaitMilliseconds);
         _output.Dispose();

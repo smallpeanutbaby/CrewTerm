@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using CrewTerm.Core.IO;
 
 namespace CrewTerm.App.Protocol;
 
@@ -31,6 +32,11 @@ public static class PipeProtocol
     private const int ReadBlockCharacters = 8192;
 
     /// <summary>
+    /// Unix 域套接字路径允许的最大字节数：macOS 的 <c>sun_path</c> 为 104 字节、Linux 为 108 字节（含结尾 NUL），留出余量。
+    /// </summary>
+    private const int MaxSocketPathBytes = 100;
+
+    /// <summary>
     /// 请求与响应共用的 JSON 选项：属性名不区分大小写；非 ASCII 字符按 UTF-8 原样写出。
     /// </summary>
     /// <remarks>
@@ -43,12 +49,14 @@ public static class PipeProtocol
     /// 计算状态目录对应的管道名。
     /// </summary>
     /// <remarks>
-    /// Windows：<c>CrewTerm-用户名-路径哈希前 24 位</c>（路径不区分大小写），与早期版本相同，可以连接已在运行的 daemon。
-    /// Linux / macOS：命名管道是临时目录中的 Unix 域套接字，套接字路径总长不能超过约 104 字节（macOS 的临时目录本身就很长），
-    /// 因此把用户名并入哈希，使用 <c>crewterm-哈希前 24 位</c> 的短格式；路径区分大小写。
+    /// <para>Windows：<c>CrewTerm-用户名-路径哈希前 24 位</c>（路径不区分大小写），与早期版本相同，可以连接已在运行的 daemon。</para>
+    /// <para>Linux / macOS：命名管道是 Unix 域套接字，使用绝对路径——状态目录中的 <see cref="StateFiles.ServerSocket"/>。
+    /// 它与锁文件位于同一目录，不受各个终端 <c>TMPDIR</c> 不同的影响，同一目录的不同写法（符号链接、大小写）也指向同一个套接字；
+    /// 状态目录只允许当前用户访问，其他用户无法抢先占用这个路径。套接字路径不能超过约 104 字节，
+    /// 状态目录过长时退回临时目录中的 <c>crewterm-哈希前 24 位</c>（用户名并入哈希）。</para>
     /// </remarks>
     /// <param name="stateDirectory">状态目录。</param>
-    /// <returns>管道名（Windows 不含 <c>\\.\pipe\</c> 前缀）。</returns>
+    /// <returns>管道名（Windows 不含 <c>\\.\pipe\</c> 前缀）；Linux / macOS 上通常是套接字的绝对路径。</returns>
     public static string PipeName(string stateDirectory)
     {
         var path = Path.GetFullPath(stateDirectory).TrimEnd(Path.DirectorySeparatorChar);
@@ -57,6 +65,8 @@ public static class PipeProtocol
             var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(path.ToUpperInvariant())))[..24];
             return "CrewTerm-" + Environment.UserName + "-" + key;
         }
+        var socket = Path.Combine(path, StateFiles.ServerSocket);
+        if (Encoding.UTF8.GetByteCount(socket) <= MaxSocketPathBytes) return socket;
         var identity = Encoding.UTF8.GetBytes(Environment.UserName + "|" + path);
         return "crewterm-" + Convert.ToHexString(SHA256.HashData(identity))[..24].ToLowerInvariant();
     }

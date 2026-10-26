@@ -13,6 +13,11 @@ namespace CrewTerm.Terminal.Tests.Pty;
 public sealed class NativeInputTests
 {
     /// <summary>
+    /// 等待探针的最长时间：Windows PowerShell 用 <c>Add-Type</c> 即时编译探针，在负载较高的持续集成机器上可能需要数十秒。
+    /// </summary>
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(90);
+
+    /// <summary>
     /// 验证：中文与带重音字符在 UTF-8（65001）代码页下以正确的 UTF-8 字节到达程序；探针输出 <c>CSI ?1000h</c> 开启鼠标跟踪后，
     /// 屏幕记录的鼠标跟踪模式为 1000，且坐标字节为 U+00B7 的传统鼠标报告在 1252 代码页下以单字节 <c>B7</c> 到达、
     /// 在 65001 代码页下以 <c>C2-B7</c> 到达。
@@ -67,13 +72,13 @@ public sealed class NativeInputTests
             using var session = ConPtySession.Start("native-input", $"powershell.exe -NoProfile -NoLogo -EncodedCommand {encoded}",
                 root, 200, 24, new Dictionary<string, string?> { ["CREWTERM_PROBE_FILE"] = file, ["CREWTERM_PROBE_MODES"] = modes,
                     ["CREWTERM_PROBE_CP"] = codePage.ToString(System.Globalization.CultureInfo.InvariantCulture) });
-            await Poll.Until(() => session.Screen.GetText().Contains("input-ready"));
+            await Poll.Until(() => session.Screen.GetText().Contains("input-ready"), ProbeTimeout);
             if (modes.Length > 0)
                 Assert.True(session.Screen.Snapshot().MouseTracking == 1000,
                     $"tracking={session.Screen.Snapshot().MouseTracking}; sgr={session.Screen.Snapshot().SgrMouse}; utf8={session.Screen.Snapshot().Utf8Mouse}");
             session.Write(inputText);
             session.Write("\r");
-            await Poll.Until(() => session.HasExited && File.Exists(file));
+            await Poll.Until(() => session.HasExited && File.Exists(file), ProbeTimeout);
             Assert.Equal(expected, await File.ReadAllTextAsync(file));
         }
         finally { Directory.Delete(root, true); }

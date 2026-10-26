@@ -211,8 +211,8 @@ public sealed class UnixPtySessionTests
             WriteScript(Path.Combine(tools, "show args"), "printf '[%s]' \"$@\"; echo\n");
             var program = relative ? "./it's tools/show args" : Path.Combine(tools, "show args");
             using var session = UnixPtySession.Start("args", "\"" + program + "\" 'two words' plain \"double quoted\"", root, 80, 24);
-            await Poll.Until(() => session.HasExited);
-            Assert.Contains("[two words][plain][double quoted]", session.Screen.GetText());
+            // 进程退出（waitpid）可能早于读取线程把最后的输出送进屏幕，因此等待输出本身。
+            await Poll.Until(() => session.HasExited && session.Screen.GetText().Contains("[two words][plain][double quoted]"));
             Assert.Equal(0, session.ExitCode);
         }
         finally { Directory.Delete(root, true); }

@@ -45,6 +45,17 @@ internal sealed class ChildProcessBlock : IDisposable
     public IntPtr EmptySignalSet { get; }
 
     /// <summary>
+    /// fork 期间屏蔽的信号集：除同步故障信号（<c>SIGILL</c>、<c>SIGTRAP</c>、<c>SIGBUS</c>、<c>SIGFPE</c>、<c>SIGSEGV</c>，以及与之编号重叠的
+    /// 7、10）之外的全部信号。
+    /// </summary>
+    public IntPtr BlockedSignalSet { get; }
+
+    /// <summary>
+    /// 保存 fork 之前调用线程原有信号屏蔽字的缓冲区。
+    /// </summary>
+    public IntPtr SavedSignalSet { get; }
+
+    /// <summary>
     /// 分配并填充全部启动数据。
     /// </summary>
     /// <param name="argv">参数列表，第一个元素是程序路径。</param>
@@ -56,8 +67,27 @@ internal sealed class ChildProcessBlock : IDisposable
         Program = Marshal.ReadIntPtr(Arguments);
         Environment = Array(environment);
         Directory = Text(directory);
-        EmptySignalSet = Allocate(UnixPtyNative.SignalSetBytes);
-        for (var offset = 0; offset < UnixPtyNative.SignalSetBytes; offset++) Marshal.WriteByte(EmptySignalSet, offset, 0);
+        EmptySignalSet = SignalSet(0x00);
+        BlockedSignalSet = SignalSet(0xFF);
+        // 信号 n 对应第 n-1 位；Linux 与 macOS 在小端序下对前 31 个信号的布局相同。
+        foreach (var signal in new[] { 4, 5, 7, 8, 10, 11 })
+        {
+            var offset = (signal - 1) / 8;
+            Marshal.WriteByte(BlockedSignalSet, offset, (byte)(Marshal.ReadByte(BlockedSignalSet, offset) & ~(1 << ((signal - 1) % 8))));
+        }
+        SavedSignalSet = SignalSet(0x00);
+    }
+
+    /// <summary>
+    /// 分配一个 <see cref="UnixPtyNative.SignalSetBytes"/> 字节、每个字节都填充为指定值的信号集。
+    /// </summary>
+    /// <param name="fill">填充值：0x00 为空集，0xFF 为全集。</param>
+    /// <returns>信号集首地址。</returns>
+    private IntPtr SignalSet(byte fill)
+    {
+        var set = Allocate(UnixPtyNative.SignalSetBytes);
+        for (var offset = 0; offset < UnixPtyNative.SignalSetBytes; offset++) Marshal.WriteByte(set, offset, fill);
+        return set;
     }
 
     /// <summary>

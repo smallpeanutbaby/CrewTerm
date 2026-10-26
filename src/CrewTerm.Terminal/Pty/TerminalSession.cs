@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using CrewTerm.Terminal.Native;
 
 namespace CrewTerm.Terminal.Pty;
@@ -11,6 +12,11 @@ public static class TerminalSession
     /// Windows 上 ConPTY 首次可用的系统版本（Windows 10 1809，内部版本 17763）。
     /// </summary>
     private const int ConPtyMinimumBuild = 17763;
+
+    /// <summary>
+    /// <see cref="DetachCurrentProcess"/> 无法脱离终端时注册的信号处理；保存引用使注册在进程生命周期内一直有效。
+    /// </summary>
+    private static readonly List<PosixSignalRegistration> TerminalSignals = [];
 
     /// <summary>
     /// 当前平台是否支持伪终端会话：Windows 10 1809 及以上、Linux 与 macOS。
@@ -56,8 +62,12 @@ public static class TerminalSession
     public static void DetachCurrentProcess()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS()) return;
-        // 已经是进程组首进程时 setsid 失败，此时进程本来就不会随原终端的前台进程组收到信号，忽略即可。
-        UnixPtyNative.CreateSession();
+        UnixPtyNative.EnsureResolver();
+        // 由 CrewTerm 自己启动的 daemon 不是进程组首进程，setsid 一定成功。直接从交互式 Shell 运行 --server 时它是前台进程组首进程，
+        // setsid 失败、仍属于该终端：此时忽略终端发来的挂断、中断与退出信号，关闭窗口或按 Ctrl+C 不会结束 daemon。
+        if (UnixPtyNative.CreateSession() < 0)
+            foreach (var signal in new[] { PosixSignal.SIGHUP, PosixSignal.SIGINT, PosixSignal.SIGQUIT })
+                TerminalSignals.Add(PosixSignalRegistration.Create(signal, context => context.Cancel = true));
         var devNull = UnixPtyNative.Open("/dev/null", UnixPtyNative.OpenReadWrite);
         if (devNull < 0) return;
         for (var target = 0; target <= 2; target++) UnixPtyNative.Duplicate(devNull, target);

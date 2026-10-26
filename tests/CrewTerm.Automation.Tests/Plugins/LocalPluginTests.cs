@@ -233,10 +233,10 @@ public sealed class LocalPluginTests : IDisposable
     }
 
     /// <summary>
-    /// 验证：插件进程记录自身 PID 后关闭自己的标准输入句柄并休眠，导致运行器写入 60000 个字符的请求失败时，
+    /// 验证（Windows，探针通过 kernel32 关闭标准输入句柄）：插件进程记录自身 PID 后关闭自己的标准输入句柄并休眠，导致运行器写入 60000 个字符的请求失败时，
     /// 运行在 30 秒内返回失败结果，并且该插件进程已被终止而不是成为孤儿进程；测试结束时如进程仍在则强制结束其进程树。
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public async Task BrokenStdinStopsThePluginInsteadOfLeavingAnOrphanProcess()
     {
         var source = Plugin("broken-input", script: """

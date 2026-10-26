@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
 using CrewTerm.App.Client;
@@ -108,13 +107,14 @@ public sealed class VersionCompatibilityTests : IAsyncLifetime
     /// <returns>模拟服务器的服务循环任务。</returns>
     private async Task ServeLegacyAsync(ConcurrentQueue<string> requests, CancellationToken token)
     {
+        var listener = FakeDaemonPipe.Listen(state);
         try
         {
             while (!token.IsCancellationRequested)
             {
-                await using var pipe = new NamedPipeServerStream(PipeProtocol.PipeName(state), PipeDirection.InOut,
-                    1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-                await pipe.WaitForConnectionAsync(token);
+                await listener.WaitForConnectionAsync(token);
+                await using var pipe = listener;
+                listener = FakeDaemonPipe.Listen(state);
                 using var reader = new StreamReader(pipe, new UTF8Encoding(false), leaveOpen: true);
                 await using var writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
                 var request = JsonSerializer.Deserialize<DaemonRequest>((await reader.ReadLineAsync(token))!)!;
@@ -131,6 +131,7 @@ public sealed class VersionCompatibilityTests : IAsyncLifetime
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        finally { await listener.DisposeAsync(); }
     }
 
     /// <summary>

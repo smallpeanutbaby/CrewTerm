@@ -66,7 +66,7 @@ public sealed class DaemonTaskServiceTests : IDisposable
     public async Task FailedPipelineDoesNotRunLaterStep()
     {
         using var service = new DaemonTaskService(root);
-        var exit = OperatingSystem.IsWindows() ? "exit /b 7" : "exit 7";
+        var exit = TestShell.ExitStep(7);
         var id = service.StartPipeline("checks", [new("fail", exit, root), new("never", "echo bad > marker", root)]);
         var result = await WaitForAsync(service, id, info => info.Completed);
         Assert.Equal(7, result.ExitCode);

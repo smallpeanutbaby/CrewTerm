@@ -48,6 +48,23 @@ public static class TestShell
     public static string Sleep(int seconds) => OperatingSystem.IsWindows() ? $"ping -n {seconds + 1} 127.0.0.1 >nul" : $"sleep {seconds}";
 
     /// <summary>
+    /// 后台任务命令中以指定退出码结束 Shell 的一步。
+    /// </summary>
+    /// <param name="code">退出码（0–255）。</param>
+    /// <returns>命令片段：Windows 为 <c>exit /b N</c>（只结束批处理上下文时也保留退出码），Linux / macOS 为 <c>exit N</c>。</returns>
+    public static string ExitStep(int code) => OperatingSystem.IsWindows() ? $"exit /b {code}" : $"exit {code}";
+
+    /// <summary>
+    /// 在交互式 Shell（<see cref="Interactive"/>）中输入的一行命令：依次输出 <c>前缀1</c> 到 <c>前缀N</c>，每个一行。
+    /// </summary>
+    /// <param name="prefix">每行的前缀，例如 <c>HISTORY_LINE_</c>。</param>
+    /// <param name="count">行数。</param>
+    /// <returns>不含回车的命令行；输入的命令本身不包含任何完整的输出行（例如 <c>前缀N</c>）。</returns>
+    public static string CountLines(string prefix, int count) => OperatingSystem.IsWindows()
+        ? $"for /l %i in (1,1,{count}) do @echo {prefix}%i"
+        : $"i=1; while [ $i -le {count} ]; do echo {prefix}$i; i=$((i+1)); done";
+
+    /// <summary>
     /// 把多步命令按当前平台的 Shell 语法顺序连接（Windows 用 <c>&amp;</c>，Linux / macOS 用 <c>;</c>），前一步失败不影响后续步骤。
     /// </summary>
     /// <param name="steps">各步命令，例如 <c>echo started</c>、<see cref="Sleep"/> 的结果。</param>

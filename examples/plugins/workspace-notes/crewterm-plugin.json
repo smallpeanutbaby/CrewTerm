@@ -12,7 +12,7 @@
         "executable": "powershell",
         "arguments": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "plugin.ps1", "summarize"]
       },
-      "timeoutSeconds": 10,
+      "timeoutSeconds": 30,
       "maxOutputCharacters": 16384
     },
     {
@@ -24,7 +24,7 @@
         "executable": "powershell",
         "arguments": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "plugin.ps1", "record-event"]
       },
-      "timeoutSeconds": 10,
+      "timeoutSeconds": 30,
       "maxOutputCharacters": 4096
     }
   ],

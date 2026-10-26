@@ -72,7 +72,12 @@ public sealed class TuiSmokeTests
             terminal.Write("\r");
             await WaitUntil(() => terminal.Screen.GetText().Contains("Terminal name"), terminal, "terminal naming prompt");
             terminal.Write("\r");
-            await WaitUntil(() => terminal.Screen.GetText().Contains("Microsoft Windows"), terminal, "embedded shell from wizard");
+            var wizardClient = new DaemonClient(state);
+            string? wizardSession = null;
+            await WaitUntil(() => (wizardSession = wizardClient.CallAsync(new("list")).GetAwaiter().GetResult().Sessions?.SingleOrDefault()?.Id) is not null,
+                terminal, "embedded shell from wizard");
+            await wizardClient.CallAsync(new("input", wizardSession, Text: "echo WIZARD_READY\r"));
+            await WaitUntil(() => terminal.Screen.GetText().Contains("WIZARD_READY"), terminal, "wizard shell shown");
             terminal.Write("echo WIZARD_STARTED\r");
             await WaitUntil(() => terminal.Screen.GetText().Contains("WIZARD_STARTED"), terminal, "interactive wizard shell");
             var live = (await new DaemonClient(state).CallAsync(new("list"))).Sessions!;

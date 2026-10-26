@@ -74,6 +74,11 @@ public static class StateFiles
     public const string ServerLock = "server.lock";
 
     /// <summary>
+    /// Linux / macOS 上 daemon 监听的 Unix 域套接字（Windows 使用命名管道，没有这个文件）。
+    /// </summary>
+    public const string ServerSocket = "server.sock";
+
+    /// <summary>
     /// daemon 启动或运行失败时追加写入的错误日志。
     /// </summary>
     public const string ServerErrorLog = "server-error.log";

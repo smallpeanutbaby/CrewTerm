@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.IO.Pipes;
 using System.Text.Json;
 using CrewTerm.App.Protocol;
 using CrewTerm.App.Tests.Fixtures;
@@ -57,13 +56,14 @@ public sealed class LegacyServerTuiTests
     /// <returns>模拟服务器的服务循环任务。</returns>
     private static async Task ServeLegacy(string state, ConcurrentQueue<string> requests, CancellationToken token)
     {
+        var listener = FakeDaemonPipe.Listen(state);
         try
         {
             while (!token.IsCancellationRequested)
             {
-                await using var pipe = new NamedPipeServerStream(PipeProtocol.PipeName(state), PipeDirection.InOut, 1,
-                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-                await pipe.WaitForConnectionAsync(token);
+                await listener.WaitForConnectionAsync(token);
+                await using var pipe = listener;
+                listener = FakeDaemonPipe.Listen(state);
                 try
                 {
                     using var reader = new StreamReader(pipe, leaveOpen: true);
@@ -80,5 +80,6 @@ public sealed class LegacyServerTuiTests
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        finally { await listener.DisposeAsync(); }
     }
 }

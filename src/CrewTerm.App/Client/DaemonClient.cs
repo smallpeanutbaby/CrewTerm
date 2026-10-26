@@ -9,7 +9,7 @@ namespace CrewTerm.App.Client;
 /// daemon 命名管道客户端：每次调用建立一个连接，发送一行 JSON 请求并读取一行 JSON 响应。
 /// </summary>
 /// <remarks>
-/// 管道使用 <see cref="PipeOptions.CurrentUserOnly"/>，只有当前 Windows 用户可以连接。
+/// 管道使用 <see cref="PipeOptions.CurrentUserOnly"/>，只有当前用户可以连接（Linux / macOS 上为 Unix 域套接字，同样校验对端身份）。
 /// 单次调用（连接 + 请求 + 响应）最长 15 秒；<c>agent-wait</c> 请求按其等待超时（最多 60 秒）再加 3 秒。
 /// </remarks>
 /// <param name="stateDirectory">状态目录；不同状态目录对应不同的 daemon 实例。</param>

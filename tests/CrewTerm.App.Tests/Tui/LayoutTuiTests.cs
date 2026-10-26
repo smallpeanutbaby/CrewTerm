@@ -27,8 +27,9 @@ public sealed class LayoutTuiTests
         {
             using var ui = Launch("context-ui", root, state);
             await Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
-            await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Context shell"));
-            await Wait(() => ui.Screen.GetText().Contains("Microsoft Windows"), ui, "terminal screen ready");
+            var context = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Context shell"));
+            await client.CallAsync(new("input", context.SessionId, Text: "echo CONTEXT_READY\r"));
+            await Wait(() => ui.Screen.GetText().Contains("CONTEXT_READY"), ui, "terminal screen ready");
             ui.Write("\u001b[<2;50;8M\u001b[<2;50;8m");
             await Wait(() => ui.Screen.GetText().Contains("TERMINAL ACTIONS"), ui, "mouse context menu");
             ui.Write("Split down"); await Task.Delay(200); ui.Write("\r");
@@ -86,7 +87,7 @@ public sealed class LayoutTuiTests
             using var ui = Launch("scroll-live-ui", root, state);
             await Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
             var created = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Scroll shell"));
-            await client.CallAsync(new("input", created.SessionId, Text: "for /l %i in (1,1,80) do @echo HISTORY_LINE_%i\r"));
+            await client.CallAsync(new("input", created.SessionId, Text: TestShell.CountLines("HISTORY_LINE_", 80) + "\r"));
             await Wait(() => ui.Screen.GetText().Contains("HISTORY_LINE_80"), ui, "history produced");
             ui.Write("\u001b1"); await Task.Delay(200);
             ui.Write("\u001b[<64;50;8M");
