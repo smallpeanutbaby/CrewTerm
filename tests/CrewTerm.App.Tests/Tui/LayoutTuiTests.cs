@@ -182,13 +182,15 @@ public sealed class LayoutTuiTests
     /// <remarks>
     /// F9 最多按 3 次，每次等待 5 秒：刚关闭的对话框可能还位于最上层（此时工作台不处理快捷键），
     /// 或者负载高时之前单独按下的 Esc 与随后的 F9 被输入解析器合在一起读成 Alt+F9，按键因此丢失。
-    /// 命令面板打开后它是模态对话框，多余的 F9 不会再打开第二个面板。
+    /// 命令面板打开后它是模态对话框，多余的 F9 不会再打开第二个面板。按 F9 之前先等上一次的面板从屏幕上消失，以免把旧标题当成新面板。
     /// </remarks>
     /// <param name="ui">运行工作区界面的伪终端会话。</param>
     /// <param name="command">命令面板中的完整命令名，例如 <c>Terminal: Split right</c>。</param>
     /// <returns>表示操作过程的任务。</returns>
     internal static async Task Command(ITerminalSession ui, string command)
     {
+        // 上一次的命令面板关闭后，屏幕可能还没重绘掉它的标题；不先等它消失，就会把旧标题当成新面板，命令文字随后被键入终端。
+        await Wait(() => !ui.Screen.GetText().Contains("COMMANDS"), ui, "previous palette closed");
         await Press(ui, "\u001b[20~", () => ui.Screen.GetText().Contains("COMMANDS"));
         await Wait(() => ui.Screen.GetText().Contains("COMMANDS"), ui, "palette");
         ui.Write(command);
