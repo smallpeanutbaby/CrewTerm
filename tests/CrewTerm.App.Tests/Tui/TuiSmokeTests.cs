@@ -258,12 +258,15 @@ public sealed class TuiSmokeTests
             terminal.Write("\u001b[19~"); // F8：分屏
             await WaitUntil(() => terminal.Screen.GetText().Contains("CREW_A_READY") && terminal.Screen.GetText().Contains("CREW_B_READY"), terminal, "two embedded terminals");
             // Alt 组合键作为独立的物理按键事件单独写入，而不是与后续文本拼成一个任意的 ESC 序列。
+            // 焦点切换生效后，工作台把真实光标放进获得焦点的面板：按光标所在列判断焦点，而不是固定等待一段时间
+            // （负载高的运行器上 250 毫秒不够，键入的文字会落到原来的面板）。
+            var secondPaneColumn = PaneColumn(terminal, "Agent B");
             terminal.Write("\u001b1");
-            await Task.Delay(250);
+            await WaitUntil(() => terminal.Screen.Snapshot() is { CursorVisible: true } shot && shot.CursorColumn < secondPaneColumn, terminal, "focus on the first pane");
             terminal.Write("echo PRIMARY_ONLY\r");
             await WaitForSessionText(client, first.SessionId!, "PRIMARY_ONLY", terminal);
             terminal.Write("\u001b2");
-            await Task.Delay(250);
+            await WaitUntil(() => terminal.Screen.Snapshot() is { CursorVisible: true } shot && shot.CursorColumn > secondPaneColumn, terminal, "focus on the second pane");
             terminal.Write("echo SECONDARY_ONLY\r");
             await WaitForSessionText(client, second.SessionId!, "SECONDARY_ONLY", terminal);
             Assert.DoesNotContain("SECONDARY_ONLY", (await client.CallAsync(new("screen", first.SessionId))).Text);
@@ -282,6 +285,20 @@ public sealed class TuiSmokeTests
             try { await client.CallAsync(new("stop")); } catch (Exception e) when (e is IOException or TimeoutException or OperationCanceledException) { }
             await TestStateDirectory.DeleteAsync(state);
         }
+    }
+
+    /// <summary>
+    /// 返回界面中标题以 <paramref name="title"/> 开头的终端面板左边框所在的列（面板标题形如 <c>╭┤Agent B  ·  …</c>）。
+    /// </summary>
+    /// <param name="terminal">运行工作区界面的伪终端会话。</param>
+    /// <param name="title">面板标题开头的会话名称。</param>
+    /// <returns>该面板标题中 <c>┤</c> 所在的列（从 0 开始）；找不到该面板时使测试失败。</returns>
+    private static int PaneColumn(ITerminalSession terminal, string title)
+    {
+        foreach (var line in terminal.Screen.GetText().Split('\n'))
+            if (line.IndexOf("┤" + title, StringComparison.Ordinal) is >= 0 and var column) return column;
+        Assert.Fail($"Missing pane {title}. Screen:\n{terminal.Screen.GetText()}");
+        return -1;
     }
 
     /// <summary>

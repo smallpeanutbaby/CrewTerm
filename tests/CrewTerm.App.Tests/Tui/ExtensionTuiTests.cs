@@ -41,7 +41,11 @@ public sealed class ExtensionTuiTests
             ui.Write("\r");
             await Wait(() => File.Exists(Path.Combine(state, "resumed.txt")), ui, "native resume process");
             Assert.Equal(nativeId, File.ReadAllText(Path.Combine(state, "resumed.txt")).Trim());
-            Assert.Equal(created.SessionId, Assert.Single((await client.CallAsync(new("list"))).Sessions!).Id);
+            // daemon 先启动恢复的进程、写完状态文件后才把会话登记到列表中，记录文件可能早于登记出现：等会话出现在列表中再断言。
+            var listed = (await client.CallAsync(new("list"))).Sessions!;
+            for (var end = DateTime.UtcNow.AddSeconds(15); listed.Length == 0 && DateTime.UtcNow < end; listed = (await client.CallAsync(new("list"))).Sessions!)
+                await Task.Delay(100);
+            Assert.Equal(created.SessionId, Assert.Single(listed).Id);
             ui.Write("\u001b[21~"); await Wait(() => ui.HasExited, ui, "detach");
         }
         finally
