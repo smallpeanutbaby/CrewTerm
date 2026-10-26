@@ -42,7 +42,7 @@
 3. F3 → 选择 Claude Code：Agent 在当前项目，也就是这个 worktree 的根目录中启动。
 4. 在项目列表中回到主仓库，重复第 2 步创建 `crew/review` 与 `~/work/app-review`，再用 F3 启动审查者，例如 Codex。
 5. F9 → `Terminal: Split right`，在两个面板中分别用 `Terminal: Choose session for active pane` 选择实现者与审查者。
-6. 在实现者的终端里输入任务。它完成时侧边栏显示 `[DONE*]`，状态栏给出提示；让它把改动提交到 `crew/impl`，
+6. 在实现者的终端里输入任务。它完成时侧栏 `agents` 中显示绿色的 `● done`，状态栏给出提示；让它把改动提交到 `crew/impl`，
    或者你在它的终端里自己 `git commit`（F6 只提供查看、diff 与单文件暂存，不提供提交）。
 7. 聚焦实现者的面板，F9 → `Agent: Handoff prompt` → 选择审查者 → 输入一行文字，例如
    `请审查 git diff main...crew/impl，只给出意见，不要修改文件`。这会在审查者的收件箱里留下一条来自实现者的消息，

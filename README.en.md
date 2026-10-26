@@ -100,7 +100,7 @@ crewterm --project ~/work/my-app
 1. **F2** adds more local projects.
 2. **F3** starts an installed agent (the list shows the resolved program path) or a custom command such as `bash`, `pwsh` or `ssh host`.
 3. **F9** opens the command palette: `Terminal: Split right` and friends split in four directions, `Tab: New` adds a tab; drag dividers to resize.
-4. **Alt+4** browses files, **Alt+3** edits, **F5** saves; **F6** shows Git changes; **F7** runs tests or pipelines.
+4. **Alt+4** browses files (the file pane is hidden by default; **F4** toggles it), **Alt+3** edits, **F5** saves; **F6** shows Git changes; **F7** runs tests or pipelines.
 5. Use `Agent: Notifications`, `Agent: Inbox` and `Agent: Handoff prompt` from the palette to coordinate agents.
 6. **F10** detaches; sessions and tasks keep running. Run `crewterm` again to return to the same layout.
 
@@ -116,7 +116,8 @@ Agents working in the same directory see each other's edits. To isolate them, cr
 | F6 / F7 | Git / background tasks and pipelines |
 | F8 / F9 | Quick split switch / searchable command palette |
 | F10 | Detach, keeping sessions and tasks running |
-| Alt+1 … Alt+5 | Focus first / second terminal pane, editor, file list, agent list |
+| Alt+1 … Alt+5 | Focus first / second terminal pane, editor, file list, sidebar `agents` |
+| Ctrl+b, then a key | herdr-style prefix keys: `N` new space, `c` new tab, `v` / `-` split, `x` close pane, `q` detach, `?` all keys |
 | Ctrl+Shift+P | Command palette |
 | Ctrl+Shift+V / Ctrl+Shift+C | Paste into the terminal / copy selection (or the visible screen) |
 | Shift + mouse, wheel | Local selection, menu or scrollback even when the program tracks the mouse |

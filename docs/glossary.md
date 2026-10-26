@@ -6,7 +6,7 @@
 
 | 术语 | 含义 |
 | --- | --- |
-| 工作台（workspace） | `crewterm` 打开的终端用户界面，包含 Agent 列表、终端面板、文件区、编辑器与状态栏。它只是客户端，可以随时离开与重新连接 |
+| 工作台（workspace） | `crewterm` 打开的终端用户界面，包含侧栏（`spaces` 与 `agents`）、终端面板、文件区、编辑器与状态栏。它只是客户端，可以随时离开与重新连接 |
 | 后台服务（daemon） | 每个状态目录一个的后台进程（`crewterm --server`），持有全部终端会话、后台任务与插件执行。界面与 CLI 都通过它工作 |
 | 状态目录（state directory） | 保存项目列表、布局、设置、Agent 配置、模板、会话目录、状态、收件箱、插件登记、任务历史与检查点的目录；`--state-dir` 指定 |
 | 分离（detach） | 按 F10 离开界面，后台服务及其会话、任务继续运行 |
@@ -31,7 +31,7 @@
 | 术语 | 含义 |
 | --- | --- |
 | 会话（session） | 后台服务中的一个终端进程，有自己的进程树、工作目录、输入与屏幕。会话 ID 是 CrewTerm 分配的标识 |
-| Agent | 在会话中运行的 AI 编程命令行程序，例如 Claude Code、Codex；普通 Shell 也作为一种会话出现在 Agent 列表中 |
+| Agent | 在会话中运行的 AI 编程命令行程序，例如 Claude Code、Codex；普通 Shell 也作为一种会话出现在侧栏 `agents` 中 |
 | Provider | Agent CLI 的种类（`claude`、`codex`、`opencode`、`gemini`、`copilot` 等），决定状态接入与原生会话恢复的方式 |
 | Agent 配置（profile） | 可以从 F3 启动的命令：内置的 Agent，或你保存的自定义 CLI / SSH 命令 |
 | 原生会话（native session） | Provider 自己的对话标识，例如 Claude Code 的会话 UUID、Codex 的 thread ID、OpenCode 的 `ses_...`。与 CrewTerm 会话 ID 分开保存 |
@@ -52,7 +52,9 @@
 | 原因（Reason） | 状态变化的说明文字，`Agent: Explain selected status` 中显示 |
 | 版本号（Revision） | 每次状态变化递增的数字；`agent-wait --after-revision` 用它只等待更新的变化 |
 | 通知（notification） | 进入 `Done` 或 `Blocked` 时产生的提醒；读取不会标为已读，需要明确确认 |
-| 优先级（priority） | Agent 列表的排序：等待输入 → 完成未读 → 有未确认消息 → 工作中 |
+| 优先级（priority） | 侧栏 `agents` 的排序：等待输入 → 完成未读 → 有未确认消息 → 工作中 |
+| 空间（space） | 侧栏 `spaces` 中的一个项目；状态点汇总其中最需要关注的 Agent 状态，右侧显示 Git 分支 |
+| 前缀键（prefix key） | 先按 `Ctrl+b` 再按一个键执行工作台操作，仿照 herdr / tmux；见 [命令参考 1.1](commands.md#11-前缀键-ctrlb) |
 | 收件箱（inbox） | 发给某个会话的定向消息列表。消息入箱与写入终端是两个独立的动作 |
 | 确认（acknowledge） | 收件方明确标记一条消息已处理（`message-ack`）；只有收件方可以确认 |
 | 提示投递（prompt） | 把文字写入目标 Agent 的终端并回车（`agent-prompt`）。目标正在等待审批或已退出时拒绝投递 |

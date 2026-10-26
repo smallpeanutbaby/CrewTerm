@@ -6,11 +6,12 @@
 ## 目录
 
 - [1. 全局快捷键](#1-全局快捷键)
+  - [1.1 前缀键 Ctrl+b](#11-前缀键-ctrlb)
 - [2. 各区域内的按键](#2-各区域内的按键)
   - [2.1 终端面板](#21-终端面板)
   - [2.2 标签栏与分隔线](#22-标签栏与分隔线)
   - [2.3 编辑器](#23-编辑器)
-  - [2.4 项目、Agent 与文件列表](#24-项目agent-与文件列表)
+  - [2.4 侧栏与文件列表](#24-侧栏与文件列表)
   - [2.5 对话框、选择器与命令面板](#25-对话框选择器与命令面板)
 - [3. 命令面板命令](#3-命令面板命令)
 - [4. 菜单项：Git、任务与检查点](#4-菜单项git任务与检查点)
@@ -24,14 +25,14 @@
 | 按键 | 作用 | 等价命令 / 说明 |
 | --- | --- | --- |
 | F1 | 帮助窗口 `SHORTCUTS · CrewTerm` | `Help: Shortcuts and usage` |
-| F2 | 添加项目 | `Project: Add folder` |
-| F3 | 新建 Agent 或终端 | `Agent: New embedded terminal`；需要当前项目 |
-| F4 | 显示 / 隐藏文件区与编辑器 | 同时把焦点移到第一个终端面板 |
+| F2 | 添加项目（新空间） | `Project: Add folder`；也可点击 `spaces` 旁的 `+ new` |
+| F3 | 新建 Agent 或终端 | `Agent: New embedded terminal`；需要当前项目；也可点击 `agents` 旁的 `+ new` |
+| F4 | 显示 / 隐藏文件区与编辑器（默认隐藏） | 同时把焦点移到第一个终端面板 |
 | F5 | 保存当前文件 | `Editor: Save file` |
 | F6 | Git 菜单 | `Git: Changes / diff / stage / worktrees` |
 | F7 | 后台任务菜单 | `Tasks: Run / history / cancel / pipelines` |
 | F8 | 切换分屏 | `Terminal: Toggle split` |
-| F9 | 命令面板 | 也可点击标签栏的 `[≡]` |
+| F9 | 命令面板 | 也可右键单击标签栏 |
 | F10 | 分离（会话与任务继续运行） | `Workspace: Detach (keep all sessions running)` |
 | Ctrl+Shift+P | 命令面板 | 同 F9 |
 | Ctrl+Shift+V | 把剪贴板粘贴到活动终端 | `Terminal: Paste clipboard` |
@@ -40,14 +41,38 @@
 | Alt+2 | 聚焦第二个终端面板 | 只有一个面板时无效 |
 | Alt+3 | 聚焦编辑器 | 文件区隐藏时先显示 |
 | Alt+4 | 聚焦文件列表 | 文件区隐藏时先显示 |
-| Alt+5 | 聚焦 Agent 列表 | — |
+| Alt+5 | 聚焦侧栏 `agents` | 也可 `Ctrl+b g` |
+| Ctrl+b | 前缀键 | 之后再按一个键，见 [1.1](#11-前缀键-ctrlb) |
 
-- 只有不带修饰键的 F1–F10 是全局快捷键；Shift+F5、Ctrl+F2 等组合以及 F11、F12 在终端面板中发给子程序。
+- 只有不带修饰键的 F1–F10 与 Ctrl+b 前缀是全局快捷键；Shift+F5、Ctrl+F2 等组合以及 F11、F12 在终端面板中发给子程序。
 - Ctrl+Shift+V / Ctrl+Shift+C 始终作用于活动终端面板，即使焦点在编辑器中。
 - 焦点不在终端面板时按 Esc 会请求退出工作台，效果与 F10 相同（先处理未保存修改并保存布局）。
 - **macOS**：Alt 组合键需要把 Option 键用作 Meta 键（Terminal.app 的“将 Option 键用作 Meta 键”，iTerm2 的 “Left Option key: Esc+”）；
   功能键可能需要同时按住 Fn。
 - 部分宿主终端自己占用 Ctrl+Shift 组合键，这时按键到不了 CrewTerm，请改用 F9 或右键菜单中的对应命令。
+
+### 1.1 前缀键 Ctrl+b
+
+仿照 herdr / tmux：先按 `Ctrl+b`，状态栏列出可用的按键，再按一个键。焦点在终端、侧栏、文件列表或编辑器中时都有效，
+对话框打开时不起作用。
+
+| 按键 | 作用 | 对应的命令或快捷键 |
+| --- | --- | --- |
+| `Ctrl+b` `N` | 添加项目（新空间） | F2 |
+| `Ctrl+b` `c` | 新建标签页 | `Tab: New` |
+| `Ctrl+b` `n` / `p` | 下一个 / 上一个标签页 | `Tab: Next` / `Tab: Previous` |
+| `Ctrl+b` `1`–`9` | 跳到第几个标签页 | 点击标签 |
+| `Ctrl+b` `T` | 重命名标签页 | `Tab: Rename` |
+| `Ctrl+b` `X` | 关闭标签页（会话继续运行） | `Tab: Close (keep sessions running)` |
+| `Ctrl+b` `v` / `-` | 向右 / 向下分屏 | `Terminal: Split right` / `Terminal: Split down` |
+| `Ctrl+b` `o` | 聚焦下一个面板 | `Terminal: Focus next pane` |
+| `Ctrl+b` `x` | 关闭面板（会话继续运行） | `Terminal: Close pane (keep session running)` |
+| `Ctrl+b` `w` / `g` | 聚焦侧栏 `spaces` / `agents` | Alt+5（agents） |
+| `Ctrl+b` `b` | 显示或隐藏侧栏 | — |
+| `Ctrl+b` `q` | 分离，会话与任务继续运行 | F10 |
+| `Ctrl+b` `?` | 帮助 | F1 |
+| `Ctrl+b` `Ctrl+b` | 把 `Ctrl+b` 本身发给获得焦点的终端 | — |
+| `Ctrl+b` Esc | 取消 | — |
 
 ## 2. 各区域内的按键
 
@@ -90,9 +115,9 @@
 
 | 操作 | 效果 |
 | --- | --- |
-| 左键点击标签 | 切换到该标签页（活动标签前显示 `●`） |
-| 左键点击 `[+]` | 新建标签页（`Tab: New`） |
-| 左键点击 `[≡]` | 打开命令面板 |
+| 左键点击标签 | 切换到该标签页（活动标签高亮显示） |
+| 左键点击 `+` | 新建标签页（`Tab: New`） |
+| 右键单击标签栏 | 打开命令面板 |
 | 拖动面板之间的分隔线（`│` 或 `─`） | 调整两侧比例（0.1–0.9），随布局保存 |
 
 ### 2.3 编辑器
@@ -118,22 +143,24 @@
 - Ctrl+F 与 `Editor: Find text` 打开同一个查找框；Ctrl+H 不会打开替换框；跳转行用 `Editor: Go to line`。
 - F5 保存；Esc 会请求退出工作台（见第 1 节；多光标编辑时先收回为单个光标）。
 
-### 2.4 项目、Agent 与文件列表
+### 2.4 侧栏与文件列表
 
-三个列表的通用按键：
+侧栏的 `spaces`、`agents` 与文件列表的通用按键：
 
 | 按键 / 鼠标 | 作用 |
 | --- | --- |
 | ↑ / ↓（或 Ctrl+P / Ctrl+N） | 上一项 / 下一项 |
 | PageUp / PageDown、Home / End | 翻页 / 第一项、最后一项 |
-| 单击 | 选中 |
-| Enter 或双击 | 执行该列表的操作（见下表） |
+| 单击 | 侧栏：选中并立即执行（见下表）；文件列表：选中 |
+| Enter（文件列表也可双击） | 执行该列表的操作（见下表） |
+| 右键单击、Shift+F10（侧栏） | 打开该行的菜单 |
+| `+`、单击标题旁的 `+ new`（侧栏） | 添加项目 / 新建 Agent |
 | 滚轮 | 滚动列表 |
 
 | 列表 | 聚焦 | Enter 的作用 |
 | --- | --- | --- |
-| 项目列表 `SPACES  ·  F2` | 鼠标点击 | 切换到选中的项目 |
-| Agent 列表 `AGENTS  ·  F3` | Alt+5 | 把选中的会话显示到终端区（已显示则聚焦所在面板） |
+| 侧栏 `spaces` | 单击、`Ctrl+b w` | 切换到选中的项目；右键菜单：`Open`、`Start an agent here`、`Remove from sidebar` |
+| 侧栏 `agents` | 单击、Alt+5、`Ctrl+b g` | 把选中的会话显示到终端区（已显示则聚焦所在面板）；右键菜单见 [使用手册 7.4](user-guide.md#74-agent-行的右键菜单) |
 | 文件列表 `FILES  ·  目录` | Alt+4 | `../` 返回上级；目录则进入；文件则在编辑器中打开 |
 
 ### 2.5 对话框、选择器与命令面板
@@ -152,8 +179,8 @@
 
 ## 3. 命令面板命令
 
-命令面板（F9、Ctrl+Shift+P 或 `[≡]`）中的内置命令按下表顺序排列，之后是已启用插件提供的命令。
-“活动面板”指获得焦点或最近选中的终端面板；名称中的 selected 指活动面板中显示的会话，而不是 Agent 列表中高亮的行。
+命令面板（F9、Ctrl+Shift+P 或右键单击标签栏）中的内置命令按下表顺序排列，之后是已启用插件提供的命令。
+“活动面板”指获得焦点或最近选中的终端面板；名称中的 selected 指活动面板中显示的会话，而不是侧栏 `agents` 中高亮的行。
 
 ### 3.1 Project
 
@@ -205,7 +232,7 @@
 
 | 命令 | 作用 | 前提条件 | 快捷键 / 其他入口 |
 | --- | --- | --- | --- |
-| `Tab: New` | 询问名称（默认 `Terminal N`）并新建一个只有空面板的标签页 | 当前项目少于 16 个标签页 | 标签栏 `[+]` |
+| `Tab: New` | 询问名称（默认 `Terminal N`）并新建一个只有空面板的标签页 | 当前项目少于 16 个标签页 | 标签栏 `+`、`Ctrl+b c` |
 | `Tab: Rename` | 重命名活动标签页 | 名称为 1–60 个可打印字符 | — |
 | `Tab: Close (keep sessions running)` | 关闭活动标签页，其中的会话继续运行；关闭最后一个时自动新建 `Terminal` 标签页 | — | — |
 | `Tab: Next` | 切换到下一个标签页（循环） | — | 点击标签 |

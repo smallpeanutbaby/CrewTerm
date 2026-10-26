@@ -57,25 +57,28 @@ crewterm doctor
 crewterm --project ~/work/my-app
 ```
 
-CrewTerm 会登记这个项目并打开工作台，第一次需要时自动在后台启动后台服务（daemon）。之后要添加更多项目，按 **F2**。
+CrewTerm 会登记这个项目并打开工作台，第一次需要时自动在后台启动后台服务（daemon）。左侧侧栏的 `spaces` 列出项目
+（名称旁显示 Git 分支），`agents` 列出正在运行的 Agent。之后要添加更多项目，点击 `spaces` 旁的 **+ new** 或按 **F2**。
 
-界面底部的状态栏列出常用功能键；按 **F1** 随时查看帮助。
+界面底部列出常用功能键；按 **F1** 随时查看帮助。也可以像 herdr / tmux 那样使用前缀键：先按 **Ctrl+b**，
+再按一个键（例如 `v` 分屏、`c` 新建标签页、`q` 离开界面），按 `Ctrl+b ?` 查看全部。
 
 ## 4. 启动第一个 Agent
 
-1. 按 **F3**，列表中显示每个内置 Agent 以及找到的程序路径，最后一项是 `Custom command…`。
-2. 选择 **Claude Code**，回车。Agent 在当前项目目录中启动，显示在当前终端面板里，并出现在 Agent 列表中。
+1. 点击 `agents` 旁的 **+ new**（或按 **F3**），列表中显示每个内置 Agent 以及找到的程序路径，最后一项是 `Custom command…`。
+2. 选择 **Claude Code**，回车。Agent 在当前项目目录中启动，显示在当前终端面板里，并出现在侧栏的 `agents` 中。
 3. 像在普通终端中一样和它交互。终端拥有普通按键、Tab、Ctrl+C 与 Esc；F1–F10 由工作台保留。
 
 如果要运行列表中没有的程序，选择 `Custom command…`，输入命令（例如 `bash`、`pwsh`、`ssh host`）和显示名称。
 
 ## 5. 分屏并启动第二个 Agent
 
-1. 按 **F9** 打开命令面板，输入 `split right`，回车执行 `Terminal: Split right`。右侧出现一个新面板并获得焦点。
+1. 按 **Ctrl+b** 再按 **v**（或按 **F9** 打开命令面板执行 `Terminal: Split right`）。右侧出现一个新面板并获得焦点。
 2. 再按 **F3**，选择 **Codex**。新 Agent 显示在右侧面板中。
 3. 用鼠标拖动两个面板之间的分隔线调整比例；点击面板或按 **Alt+1** / **Alt+2** 切换焦点。
 
-面板可以继续向四个方向分割；`Tab: New` 新建标签页。关闭面板或标签页只改变布局，里面的 Agent 继续运行，
+面板可以继续向四个方向分割（`Ctrl+b -` 向下分屏）；点击标签栏的 `+` 或按 `Ctrl+b c` 新建标签页。
+单击 `agents` 中的任意一行，就会把那个 Agent 显示到当前面板。关闭面板或标签页只改变布局，里面的 Agent 继续运行，
 可以用 `Terminal: Choose session for active pane` 把它重新放回任意面板。布局按项目保存，下次打开时恢复。
 
 ## 6. 为 Agent 隔离出独立的 worktree
@@ -91,7 +94,7 @@ CrewTerm 会登记这个项目并打开工作台，第一次需要时自动在�
 
 ## 7. 把代码交给 Agent
 
-1. 按 **Alt+4** 进入文件列表，选中一个文件回车，在编辑器中打开。
+1. 按 **Alt+4** 显示文件区并进入文件列表（文件区默认隐藏，**F4** 切换显示），选中一个文件回车，在编辑器中打开。
 2. 在编辑器中选中几行代码。
 3. 按 **F9**，执行 `Editor: Send selected code to an agent`，输入说明（默认 `Review this code`），再选择目标 Agent。
 4. 代码连同文件路径和行号以 bracketed paste 插入目标 Agent 的输入区，**不会自动提交**：切换到那个终端检查内容后再按 Enter。
@@ -102,8 +105,9 @@ CrewTerm 会登记这个项目并打开工作台，第一次需要时自动在�
 
 ## 8. 查看状态与通知
 
-Agent 列表（**Alt+5**）显示每个会话的语义状态：工作中、等待输入、完成未读、空闲、已退出或未知。
-等待输入的 Agent 排在最前面，其次是完成未读的。
+侧栏的 `agents`（**Alt+5** 聚焦）显示每个会话的语义状态：`◉ blocked` 等待你决定、`● working` 工作中、
+`● done` 完成未读、`○ idle` 空闲，以及 `○ unknown`、`✕ exited`。等待决定的 Agent 排在最前面，其次是完成未读的；
+`spaces` 中每个项目的状态点显示其中最需要关注的那一个。右键单击一行可以直接解释状态、发消息、交接或终止。
 
 - `Agent: Explain selected status`：查看当前状态的来源和原因。
 - `Agent: Notifications`：查看完成与等待输入的通知；`Agent: Mark selected as read` 确认已读。
