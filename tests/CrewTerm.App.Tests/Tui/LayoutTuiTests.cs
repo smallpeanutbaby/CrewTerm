@@ -179,17 +179,50 @@ public sealed class LayoutTuiTests
     /// 按 F9 打开命令面板并等待出现 <c>COMMANDS</c>，输入命令名进行过滤，等待屏幕上出现该命令（而不是固定延时，
     /// 避免并行负载下界面来不及重绘），再稍候让过滤结果选中该项后按 Enter 执行。
     /// </summary>
+    /// <remarks>
+    /// F9 最多按 3 次，每次等待 5 秒：刚关闭的对话框可能还位于最上层（此时工作台不处理快捷键），
+    /// 或者负载高时之前单独按下的 Esc 与随后的 F9 被输入解析器合在一起读成 Alt+F9，按键因此丢失。
+    /// 命令面板打开后它是模态对话框，多余的 F9 不会再打开第二个面板。
+    /// </remarks>
     /// <param name="ui">运行工作区界面的伪终端会话。</param>
     /// <param name="command">命令面板中的完整命令名，例如 <c>Terminal: Split right</c>。</param>
     /// <returns>表示操作过程的任务。</returns>
     internal static async Task Command(ITerminalSession ui, string command)
     {
-        ui.Write("\u001b[20~");
+        await Press(ui, "\u001b[20~", () => ui.Screen.GetText().Contains("COMMANDS"));
         await Wait(() => ui.Screen.GetText().Contains("COMMANDS"), ui, "palette");
         ui.Write(command);
         await Wait(() => ui.Screen.GetText().Contains(command), ui, "palette filter: " + command);
         await Task.Delay(100);
         ui.Write("\r");
+    }
+
+    /// <summary>
+    /// 按 F10 分离工作区界面并等待进程退出；按键丢失（原因见 <see cref="Command"/>）时最多重按 3 次。
+    /// </summary>
+    /// <param name="ui">运行工作区界面的伪终端会话。</param>
+    /// <returns>表示操作过程的任务。</returns>
+    internal static async Task Detach(ITerminalSession ui)
+    {
+        await Press(ui, "\u001b[21~", () => ui.HasExited);
+        await Wait(() => ui.HasExited, ui, "detach");
+    }
+
+    /// <summary>
+    /// 发送一个按键序列，直到条件成立：最多发送 3 次，每次之后最多等待 5 秒；界面进程已退出时停止。
+    /// 只用于重复发送也无害的按键（打开模态对话框、分离等）。
+    /// </summary>
+    /// <param name="ui">运行工作区界面的伪终端会话。</param>
+    /// <param name="keys">要发送的按键序列。</param>
+    /// <param name="succeeded">按键已生效的判断条件。</param>
+    /// <returns>表示操作过程的任务；条件最终是否成立由调用方随后的等待判断。</returns>
+    internal static async Task Press(ITerminalSession ui, string keys, Func<bool> succeeded)
+    {
+        for (var attempt = 0; attempt < 3 && !succeeded() && !ui.HasExited; attempt++)
+        {
+            ui.Write(keys);
+            for (var waited = 0; waited < 50 && !succeeded() && !ui.HasExited; waited++) await Task.Delay(100);
+        }
     }
 
     /// <summary>

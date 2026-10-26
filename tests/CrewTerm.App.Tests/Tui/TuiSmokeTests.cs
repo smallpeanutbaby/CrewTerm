@@ -187,8 +187,9 @@ public sealed class TuiSmokeTests
             await WaitForSessionText(client, session.SessionId!, "AFTER_SPACE_CLICK", terminal);
             await RetryUntil(terminal, () => { terminal.Write("\u001b5"); return Task.Delay(300); },
                 () => terminal.Screen.Snapshot() is { CursorVisible: false });
-            terminal.Write("\u001b");
-            await Task.Delay(500);
+            // 焦点回到终端后光标重新显示；Esc 与随后的按键可能被合在一起解析，未生效就重按（终端获得焦点后多余的 Esc 交给 Shell，无害）。
+            await RetryUntil(terminal, () => { terminal.Write("\u001b"); return Task.Delay(300); },
+                () => terminal.Screen.Snapshot() is { CursorVisible: true } || terminal.HasExited);
             Assert.False(terminal.HasExited, "Esc in the sidebar must not detach the workspace.");
             terminal.Write("echo AFTER_SIDEBAR_ESC\r");
             await WaitForSessionText(client, session.SessionId!, "AFTER_SIDEBAR_ESC", terminal);
@@ -228,8 +229,9 @@ public sealed class TuiSmokeTests
             Assert.Contains("UI_TASK_MARKER", terminal.Screen.GetText());
             var tasks = (await new DaemonClient(state).CallAsync(new("task-list"))).Tasks!;
             Assert.Contains(tasks, task => task.Completed && task.ExitCode == 0 && task.Command == "echo UI_TASK_MARKER");
-            terminal.Write("\u001b"); await Task.Delay(250); terminal.Write("\u001b[21~");
-            await WaitUntil(() => terminal.HasExited, terminal, "task UI detach");
+            terminal.Write("\u001b");
+            await WaitUntil(() => !terminal.Screen.GetText().Contains("TASK OUTPUT"), terminal, "task output closed");
+            await LayoutTuiTests.Detach(terminal);
         }
         finally
         {
@@ -390,9 +392,8 @@ public sealed class TuiSmokeTests
             terminal.Write("\u001bOP");
             await WaitUntil(() => terminal.Screen.GetText().Contains("SHORTCUTS"), terminal, "help window");
             terminal.Write("\u001b");
-            await Task.Delay(300);
-            terminal.Write("\u001b[21~");
-            await WaitUntil(() => terminal.HasExited, terminal, "clean detach");
+            await WaitUntil(() => !terminal.Screen.GetText().Contains("SHORTCUTS"), terminal, "help closed");
+            await LayoutTuiTests.Detach(terminal);
             Assert.Equal(0, terminal.ExitCode);
         }
         finally

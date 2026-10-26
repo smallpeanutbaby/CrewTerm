@@ -46,7 +46,7 @@ public sealed class ExtensionTuiTests
             for (var end = DateTime.UtcNow.AddSeconds(15); listed.Length == 0 && DateTime.UtcNow < end; listed = (await client.CallAsync(new("list"))).Sessions!)
                 await Task.Delay(100);
             Assert.Equal(created.SessionId, Assert.Single(listed).Id);
-            ui.Write("\u001b[21~"); await Wait(() => ui.HasExited, ui, "detach");
+            await Detach(ui);
         }
         finally
         {
@@ -89,7 +89,8 @@ public sealed class ExtensionTuiTests
             await Wait(() => ui.Screen.GetText().Contains("PLUGIN OUTPUT") && ui.Screen.GetText().Contains("UI_PLUGIN_EXECUTED"), ui, "actual plugin output");
             using var proof = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "proof.json")));
             Assert.Equal(root, proof.RootElement.GetProperty("payload").GetProperty("projectRoot").GetString());
-            ui.Write("\u001b"); await Task.Delay(200);
+            ui.Write("\u001b");
+            await Wait(() => !ui.Screen.GetText().Contains("PLUGIN OUTPUT"), ui, "plugin output closed");
             await Command(ui, "Plugins: Enable / disable");
             await Wait(() => ui.Screen.GetText().Contains("LOCAL PLUGINS"), ui, "disable list");
             ui.Write("\r"); await Wait(() => ui.Screen.GetText().Contains("Plugin disabled"), ui, "plugin disabled");
@@ -98,7 +99,7 @@ public sealed class ExtensionTuiTests
             ui.Write("\r"); await Wait(() => ui.Screen.GetText().Contains("Registration removed"), ui, "plugin removed");
             Assert.Empty((await client.CallAsync(new("plugin-list"))).Plugins!);
             Assert.True(File.Exists(script));
-            ui.Write("\u001b[21~"); await Wait(() => ui.HasExited, ui, "detach");
+            await Detach(ui);
         }
         finally
         {

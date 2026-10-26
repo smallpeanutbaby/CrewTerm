@@ -75,13 +75,7 @@ public sealed class AgentTuiTests
             await Wait(() => ui.Screen.GetText().Contains("WAIT RESULT") && ui.Screen.GetText().Contains("Coordination complete"), ui, "wait completed");
             ui.Write("\u001b");
             await Wait(() => !ui.Screen.GetText().Contains("WAIT RESULT"), ui, "wait result closed");
-            // 对话框关闭后工作台才重新位于最上层、接受 F10；负载高时关闭可能晚于按键，或 Esc 与紧随的 F10 被一起解析，未分离就重按。
-            for (var attempt = 0; attempt < 3 && !ui.HasExited; attempt++)
-            {
-                ui.Write("\u001b[21~");
-                for (var waited = 0; waited < 100 && !ui.HasExited; waited++) await Task.Delay(50);
-            }
-            await Wait(() => ui.HasExited, ui, "detach");
+            await Detach(ui);
         }
         finally
         {
