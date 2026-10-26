@@ -132,10 +132,13 @@ Cli ─┴─► Client ─► Protocol ◄─ Server
 | 子进程环境 | `TERM`、`COLORTERM`；`NoDefaultCurrentDirectoryInExePath=1` 使会话中的 cmd 不从当前目录查找程序 | `TERM`、`COLORTERM`；没有区域设置时补一个 UTF-8 `LANG`；恢复 `SIGPIPE` 默认处理并清空信号屏蔽字 |
 | 句柄继承 | 只把伪控制台句柄交给子进程 | 主设备设置 close-on-exec，`forkpty` 与设置之间串行化，其他会话的进程不会继承 |
 | daemon 脱离 | `CreateProcessW` 不继承句柄、不创建窗口 | `setsid` 创建新会话，标准输入输出改接 `/dev/null`，关闭终端窗口不会结束 daemon |
-| 管道名 | `CrewTerm-用户名-路径哈希` | `crewterm-哈希`（用户名并入哈希），适应 Unix 域套接字约 104 字节的路径长度限制 |
+| 管道名 | `CrewTerm-用户名-路径哈希` | 状态目录中的 Unix 域套接字 `server.sock`（与锁文件同目录、只有当前用户可访问、不受 `TMPDIR` 影响）；路径超过约 100 字节时退回临时目录中的 `crewterm-哈希` |
+| 监听循环 | 每个连接一个管道实例 | 同名实例共用一个监听套接字、最后一个实例释放时关闭，因此始终先创建下一个监听实例再处理当前连接（两个平台使用同一实现） |
 | 状态目录 | `%LOCALAPPDATA%\CrewTerm`（用户级 ACL） | `~/.local/share/CrewTerm` 或 `~/Library/Application Support/CrewTerm`，新建时权限 `0700` |
 | Shell 安全 | Provider hook 路径拒绝 `%`、`!`、`"` | 还拒绝 `$`、反引号、反斜杠；含 Shell 展开语法的启动命令需要显式登记恢复命令 |
 
+`forkpty` 期间调用线程屏蔽信号（同步故障信号除外），子进程继承屏蔽字，先把全部标准信号恢复为默认处理再解除屏蔽：
+继承来的 .NET 信号处理程序在 `exec` 之前不会运行（否则信号会经与 daemon 共用的管道被当作 daemon 自己的信号处理）。
 `fork` 之后、`execve` 之前，子进程只执行预先绑定（`Marshal.Prelink`）、不切换 GC 模式（`SuppressGCTransition`）的原生调用，
 所需的字符串与指针数组在 `fork` 之前全部写入非托管内存（`ChildProcessBlock`）：只剩一个线程的子进程中不会发生 JIT、托管分配或运行时锁等待。
 Apple Silicon 的可变参数一律经栈传递，`ioctl(TIOCSWINSZ)` 因此使用补齐寄存器的专用声明。
@@ -242,3 +245,28 @@ macOS `~/Library/Application Support/CrewTerm`），由 `StateFiles.EnsureDirect
 | 流水线名称与步骤名未校验控制字符；任务名直接显示 | daemon、UI | 校验并在显示前清理 |
 | SGR 58/59 未消费子参数；截断的冒号形式颜色吞掉后续参数；超长 CSI 的剩余字节被打印 | `TerminalScreen` | 逐项修复 |
 | Agent 发现接受 PATH 中的相对条目（如 `.`） | `ExecutableLocator` | 忽略相对条目 |
+
+### 第三轮（0.3 跨平台：Linux 与 macOS）
+
+本轮在 Windows 本机验证之外，以 GitHub Actions 在 `ubuntu-latest` 与 `macos-latest`（Apple Silicon）上实际运行全部测试，并做了一次独立的只读审查。
+
+| 问题 | 位置 | 处理 |
+| --- | --- | --- |
+| **Unix 实测**：同名管道实例共用一个监听套接字，最后一个实例释放即关闭；快速完成的请求在下一个实例创建前释放自己的实例，排队中的客户端连接被重置 | `DaemonHost` | 先创建下一个监听实例再处理当前连接；实例上限为连接名额加 1 |
+| **安全**：Unix 套接字位于各终端可能不同的 `TMPDIR`，在共享主机上可被其他用户抢先占用 | `PipeProtocol` | 改为状态目录（`0700`）中的 `server.sock`，过长时退回临时目录 |
+| **安全**：状态目录按 umask 新建，其他本地用户可以读取命令输出与源码检查点 | `StateFiles` | 新建时权限 `0700` |
+| fork 之后、exec 之前，子进程可能运行继承来的 .NET 信号处理程序，把信号经共享管道交给 daemon | `UnixPtySession` | `forkpty` 期间屏蔽信号；子进程先恢复全部标准信号的默认处理再解除屏蔽 |
+| 伪终端主设备没有 close-on-exec，会被之后启动的其他会话进程继承 | `UnixPtySession` | 设置 close-on-exec，并串行化各会话的启动 |
+| 子程序不读取输入时，阻塞的写入持有状态锁，`close` 与状态查询被挂起 | `UnixPtySession` | 写入使用独立的锁；结束进程组后阻塞的写入以 I/O 错误返回 |
+| `waitpid` 被信号中断（EINTR）时被当作已回收，留下僵尸进程 | `UnixPtySession` | 重试 EINTR，只把 ECHILD 视为已回收 |
+| 直接从交互式 Shell 运行 `--server` 时 `setsid` 失败，Ctrl+C 或关闭窗口会结束 daemon | `TerminalSession` | 此时忽略 `SIGHUP`、`SIGINT`、`SIGQUIT` |
+| **安全**：Provider 命令在 Unix 上经 `/bin/sh` 执行，`$`、反引号、反斜杠等会被展开 | `ProviderCommandLine`、`AgentHookLaunchService` | 含这类语法的路径不嵌入 hook；含这类语法的命令需要显式登记恢复命令 |
+| Agent 发现把没有执行权限的同名文件当作程序 | `ExecutableLocator`、`TerminalCommand` | Unix 上要求执行权限 |
+| 示例插件只能在 Windows 运行 | 插件清单 | 命令支持 `windows` / `linux` / `osx` 替代调用 |
+| 测试：大量用例硬编码 `cmd.exe`、`.cmd` 启动脚本、`exit /b`、cmd 横幅；macOS 临时目录经符号链接；CI 并行负载使计时类用例超时 | tests、CI | 共享测试支持 `CrewTerm.Testing`（平台限定特性、`TestShell`、`CanonicalPath`）；CI 逐个运行测试项目 |
+
+已知限制（未修复，影响罕见）：
+
+- `forkpty` 与设置 close-on-exec 之间（微秒级），本进程中其他代码若恰好通过 `Process.Start` 启动程序，该程序可能继承新的伪终端。
+- 子进程在 fork 之后、exec 之前仍会执行运行时插入的 GC 轮询；若 fork 恰好发生在另一线程发起的 GC 挂起期间，子进程会停在轮询处，
+  该终端保持空白。信号在此期间被屏蔽，不会影响 daemon；关闭该终端即可结束它（`SIGKILL`）。

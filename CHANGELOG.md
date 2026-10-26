@@ -9,7 +9,7 @@
 
 - **支持 Linux 与 macOS**：新增基于 `forkpty` 的伪终端 `UnixPtySession`（作业控制、`SIGWINCH`、进程组结束、退出码 128 + 信号），
   与 Windows ConPTY 共用 `ITerminalSession` 接口，由 `TerminalSession.Start` 按平台选择实现。
-- Unix 上的后台服务：启动后创建新会话并脱离启动它的终端；命名管道使用适合 Unix 域套接字长度限制的短名称。
+- Unix 上的后台服务：启动后创建新会话并脱离启动它的终端；监听状态目录中的 Unix 域套接字 `server.sock`。
 - 三平台持续集成：每次推送在 Windows、Ubuntu、macOS（Apple Silicon）上构建并运行全部测试，失败的测试以注释显示在检查结果中。
 - 发布流程：推送 `v*` 标签后，测试通过即为 `win-x64`、`win-arm64`、`linux-x64`、`linux-arm64`、`osx-x64`、`osx-arm64`
   生成自带运行时的发布包并创建 GitHub Release。
@@ -26,7 +26,8 @@
 ### 安全
 
 - Linux / macOS：裸程序名只在 `PATH` 的绝对路径条目中查找，忽略 `.` 与空条目；伪终端主设备设置 close-on-exec，
-  不会被其他会话的进程继承；新建的状态目录权限为 `0700`。
+  不会被其他会话的进程继承；新建的状态目录权限为 `0700`，后台服务的套接字位于其中，其他用户无法连接或抢占。
+- Linux / macOS：创建伪终端子进程期间屏蔽信号，`exec` 之前不会运行继承来的运行时信号处理程序。
 - Linux / macOS：含 Shell 展开语法（`$`、反引号、反斜杠等）的路径不会嵌入 Provider hook 命令，
   含这类语法的启动命令需要显式登记恢复命令，不会被自动改写。
 
