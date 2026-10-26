@@ -50,5 +50,20 @@ public sealed class ProjectCatalogTests : IDisposable
         Assert.True(Directory.Exists(project));
     }
 
+    [Fact]
+    public void ConcurrentClientsCannotSilentlyOverwriteProjects()
+    {
+        var state = Path.Combine(root, "state");
+        var first = new ProjectCatalog(state);
+        var second = new ProjectCatalog(state);
+        var a = Directory.CreateDirectory(Path.Combine(root, "a")).FullName;
+        var b = Directory.CreateDirectory(Path.Combine(root, "b")).FullName;
+        first.Add(a);
+        first.Save();
+        second.Add(b);
+        Assert.Throws<IOException>(() => second.Save());
+        Assert.Equal(a, Assert.Single(new ProjectCatalog(state).Projects).Path);
+    }
+
     public void Dispose() => Directory.Delete(root, true);
 }

@@ -6,6 +6,7 @@ public sealed class ProjectCatalog
 {
     private readonly string file;
     private readonly List<ProjectEntry> projects;
+    private string? fingerprint;
     public IReadOnlyList<ProjectEntry> Projects => projects.AsReadOnly();
     private static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
         ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
@@ -13,7 +14,7 @@ public sealed class ProjectCatalog
     public ProjectCatalog(string stateDirectory)
     {
         file = System.IO.Path.Combine(System.IO.Path.GetFullPath(stateDirectory), "projects.json");
-        projects = AtomicJsonStore.Load<List<ProjectEntry>>(file) ?? [];
+        projects = AtomicJsonStore.Load<List<ProjectEntry>>(file, out fingerprint) ?? [];
         if (projects.Any(p => string.IsNullOrWhiteSpace(p.Id) || string.IsNullOrWhiteSpace(p.Path)))
             throw new InvalidDataException($"Invalid project settings; original file preserved: {file}");
     }
@@ -31,5 +32,5 @@ public sealed class ProjectCatalog
     }
 
     public void Remove(string id) => projects.RemoveAll(p => p.Id == id);
-    public void Save() => AtomicJsonStore.Save(file, projects);
+    public void Save() => fingerprint = AtomicJsonStore.SaveIfUnchanged(file, projects, fingerprint);
 }
