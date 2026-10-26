@@ -11,6 +11,7 @@ namespace CrewTerm.App.Tests.Tui;
 /// 通过按键与 SGR 鼠标序列驱动 TUI，覆盖右键菜单分割、初始焦点、滚动后回到实时输出、命名标签页与嵌套分割及其分离后的持久化恢复。
 /// 同时提供其他 TUI 测试共用的启动、等待和命令面板辅助方法。
 /// </summary>
+[Collection(TuiCollection.Name)]
 public sealed class LayoutTuiTests
 {
     /// <summary>

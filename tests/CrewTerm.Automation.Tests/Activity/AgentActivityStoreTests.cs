@@ -54,6 +54,25 @@ public sealed class AgentActivityStoreTests : IDisposable
     }
 
     /// <summary>
+    /// 验证：Windows ConPTY 用光标定位序列（而不是换行符）把审批提示放到新的一行时，提示仍被识别为位于行首、状态转为等待决定；
+    /// 只有颜色等不换行的控制序列时，接在同一行命令提示符之后的文字不会被当作审批提示。
+    /// </summary>
+    [Fact]
+    public void ApprovalPromptPlacedByCursorPositioningIsRecognized()
+    {
+        var store = new AgentActivityStore(root);
+        store.Register("agent");
+        // ConPTY 重绘时用 CUP 把光标移到下一行行首，而不是输出换行符。
+        store.ObserveOutput("agent", "C:\\work>echo Do you want to proceed?\u001b[3;1HDo you want to proceed?\u001b[K");
+        Assert.Equal(AgentActivityState.Blocked, store.Get("agent").State);
+        Assert.Equal("screen", store.Get("agent").Source);
+
+        store.Register("colored");
+        store.ObserveOutput("colored", "prompt> \u001b[1mDo you want to proceed?\u001b[0m");
+        Assert.NotEqual(AgentActivityState.Blocked, store.Get("colored").State);
+    }
+
+    /// <summary>
     /// 验证：看似完成的普通输出不会改变 <see cref="AgentActivityState.Unknown"/> 状态；被拆在两个输出块中的审批提示
     /// <c>Do you want to proceed?</c> 会被识别为等待决定（来源 <c>screen</c>）；而在 hook 显式上报工作中之后，
     /// 同样的提示文本不能再覆盖该显式状态。

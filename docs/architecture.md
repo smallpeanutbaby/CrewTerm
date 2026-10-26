@@ -160,7 +160,7 @@ macOS `~/Library/Application Support/CrewTerm`），由 `StateFiles.EnsureDirect
 | `server.lock`、`server-error.log` | daemon | 独占锁 / 追加 |
 
 所有写入都经过 `AtomicFile.WriteAllBytes`：同目录临时文件 → WriteThrough 刷盘 → 可选的提交前检查 → 原子替换
-（目标被杀毒软件或其他读取方短暂占用时有限次重试，最长约 0.5 秒）。状态文件的读取使用 `AtomicFile.ReadAllBytes`，
+（目标被杀毒软件或其他读取方短暂占用时有限次重试，最长约 1.3 秒）。状态文件的读取使用 `AtomicFile.ReadAllBytes`，
 以读写删除共享方式打开并一次读完，占用时间极短；读取与替换恰好重叠时由替换方重试完成。源代码保存与检查点恢复在提交前检查中再次比对磁盘内容，Agent 并发修改时抛出 `FileConflictException`，绝不静默覆盖。
 
 ## 6. 代码注释规范

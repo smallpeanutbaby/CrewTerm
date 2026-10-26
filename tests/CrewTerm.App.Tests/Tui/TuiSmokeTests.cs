@@ -8,6 +8,7 @@ namespace CrewTerm.App.Tests.Tui;
 /// 工作区界面的冒烟测试：在伪终端中启动真实的 <c>crewterm</c> 可执行文件，连接独立临时状态目录中的真实 daemon，
 /// 覆盖多客户端布局保存冲突、命令面板与新建终端向导、跨项目会话选择的持久化、任务菜单、编辑器保存与未保存保护、分割终端的输入路由，以及帮助窗口与分离。
 /// </summary>
+[Collection(TuiCollection.Name)]
 public sealed class TuiSmokeTests
 {
     /// <summary>

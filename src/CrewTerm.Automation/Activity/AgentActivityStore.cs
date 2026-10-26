@@ -199,7 +199,7 @@ public sealed partial class AgentActivityStore
             var text = recentOutput.GetValueOrDefault(sessionId, "") + output;
             if (text.Length > 4096) text = text[^4096..];
             recentOutput[sessionId] = text;
-            if (ApprovalPrompt().IsMatch(AnsiControl().Replace(text, "")))
+            if (ApprovalPrompt().IsMatch(PlainText(text)))
                 Transition(sessionId, AgentActivityState.Blocked, "screen", "Recognized approval prompt; input requires a user decision");
         }
     }
@@ -326,6 +326,18 @@ public sealed partial class AgentActivityStore
     /// <returns>由源生成器生成的正则实例。</returns>
     [GeneratedRegex(@"(?im)^\s*(?:do you want to proceed\?|would you like to proceed\?|allow this command\?)")]
     private static partial Regex ApprovalPrompt();
+
+    /// <summary>
+    /// 去掉终端输出中的 ANSI CSI 控制序列，得到用于识别提示的纯文本。
+    /// </summary>
+    /// <remarks>
+    /// 把光标换行或定位到某行的序列（<c>CUP H</c>、<c>HVP f</c>、<c>VPA d</c>、<c>CNL E</c>、<c>CPL F</c>）换成换行而不是直接删除：
+    /// Windows ConPTY 重绘屏幕时常用这些序列代替换行符，直接删除会把新的一行接到上一行末尾，使行首的提示无法识别。
+    /// </remarks>
+    /// <param name="text">终端输出。</param>
+    /// <returns>纯文本。</returns>
+    private static string PlainText(string text)
+        => AnsiControl().Replace(text, match => match.ValueSpan[^1] is 'H' or 'f' or 'd' or 'E' or 'F' ? "\n" : "");
 
     /// <summary>
     /// 匹配 ANSI CSI 控制序列（<c>ESC [</c> 参数字节、中间字节、结束字节）的正则，用于在识别提示前去掉颜色和光标控制。

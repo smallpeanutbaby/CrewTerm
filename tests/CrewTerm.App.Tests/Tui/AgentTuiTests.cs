@@ -10,6 +10,7 @@ namespace CrewTerm.App.Tests.Tui;
 /// Agent 协作界面的端到端测试：在伪终端中启动真实的 <c>crewterm</c> 工作区，连接到独立临时状态目录中的真实 daemon，
 /// 通过写入按键序列驱动 TUI，并用 <see cref="DaemonClient"/> 创建会话、上报状态和核对 daemon 中的消息与通知。
 /// </summary>
+[Collection(TuiCollection.Name)]
 public sealed class AgentTuiTests
 {
     /// <summary>

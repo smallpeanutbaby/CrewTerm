@@ -10,6 +10,7 @@ namespace CrewTerm.App.Tests.Tui;
 /// 旧版 daemon 兼容性的端到端界面测试：在测试状态目录对应的命名管道上模拟一个只支持 <c>ping</c> 与 <c>list</c> 的 0.1.0 版 daemon，
 /// 在伪终端中启动真实的工作区连接它，验证界面会明确提示服务器过旧，但绝不会替用户停止它。
 /// </summary>
+[Collection(TuiCollection.Name)]
 public sealed class LegacyServerTuiTests
 {
     /// <summary>

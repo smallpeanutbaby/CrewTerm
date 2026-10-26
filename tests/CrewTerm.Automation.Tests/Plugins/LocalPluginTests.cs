@@ -240,8 +240,8 @@ public sealed class LocalPluginTests : IDisposable
     public async Task BrokenStdinStopsThePluginInsteadOfLeavingAnOrphanProcess()
     {
         var source = Plugin("broken-input", script: """
-            Add-Type 'using System; using System.Runtime.InteropServices; public static class PluginFixtureHandles { [DllImport("kernel32.dll")] public static extern IntPtr GetStdHandle(int n); [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h); }'
             [IO.File]::WriteAllText('pid.txt', $PID.ToString())
+            Add-Type 'using System; using System.Runtime.InteropServices; public static class PluginFixtureHandles { [DllImport("kernel32.dll")] public static extern IntPtr GetStdHandle(int n); [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h); }'
             [PluginFixtureHandles]::CloseHandle([PluginFixtureHandles]::GetStdHandle(-10)) | Out-Null
             Start-Sleep -Seconds 10
             """);

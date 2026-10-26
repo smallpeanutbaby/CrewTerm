@@ -14,12 +14,12 @@ public static class AtomicFile
     /// <summary>
     /// 替换目标文件的最大尝试次数（含第一次）。
     /// </summary>
-    private const int CommitAttempts = 8;
+    private const int CommitAttempts = 12;
 
     /// <summary>
     /// 两次替换尝试之间的基础等待时间（毫秒），按尝试次数线性增加。
     /// </summary>
-    private const int CommitRetryDelayMilliseconds = 15;
+    private const int CommitRetryDelayMilliseconds = 20;
 
     /// <summary>
     /// Win32 <c>ERROR_SHARING_VIOLATION</c>：文件正被其他进程以不兼容的共享方式打开。

@@ -10,6 +10,7 @@ namespace CrewTerm.App.Tests.Tui;
 /// 扩展功能（恢复原生会话、本地插件）的端到端界面测试：在伪终端中启动真实的 <c>crewterm</c> 工作区，
 /// 连接独立临时状态目录中的真实 daemon，通过命令面板驱动 TUI，并用 <see cref="DaemonClient"/> 和磁盘文件核对实际效果。
 /// </summary>
+[Collection(TuiCollection.Name)]
 public sealed class ExtensionTuiTests
 {
     /// <summary>

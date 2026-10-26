@@ -10,6 +10,7 @@ namespace CrewTerm.App.Tests.Tui;
 /// 命令 <c>Agent: Choose second split terminal</c> 的端到端界面测试：在伪终端中启动真实的工作区并连接独立临时状态目录中的真实 daemon，
 /// 验证选择已显示的会话、未显示的会话以及其他项目的会话时，面板绑定、焦点、输入路由和分离后保存的布局。
 /// </summary>
+[Collection(TuiCollection.Name)]
 public sealed class SecondPaneSelectionTuiTests
 {
     /// <summary>
