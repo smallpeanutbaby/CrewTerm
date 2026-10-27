@@ -29,7 +29,10 @@ public sealed class LayoutTuiTests
             using var ui = Launch("context-ui", root, state);
             await Wait(() => ui.Screen.GetText().Contains("F10 Detach"), ui, "workspace ready");
             var context = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Context shell"));
+            await WaitForShellPrompt(client, context.SessionId!, ui);
             await client.CallAsync(new("input", context.SessionId, Text: "echo CONTEXT_READY\r"));
+            // 先确认会话本身已输出，再等界面显示：失败时能分清是 Shell 还是界面的问题。
+            await WaitForSessionScreen(client, context.SessionId!, ui, screen => screen.Contains("CONTEXT_READY"), "Session output missing");
             await Wait(() => ui.Screen.GetText().Contains("CONTEXT_READY"), ui, "terminal screen ready");
             ui.Write("\u001b[<2;50;8M\u001b[<2;50;8m");
             await Wait(() => ui.Screen.GetText().Contains("TERMINAL ACTIONS"), ui, "mouse context menu");
@@ -283,5 +286,44 @@ public sealed class LayoutTuiTests
             await Task.Delay(100);
         }
         Assert.Fail(step + "\n" + ui.Screen.GetText());
+    }
+
+    /// <summary>
+    /// 等待会话的 Shell 打印出提示符（最后一个非空行以 <c>&gt;</c>、<c>$</c> 或 <c>#</c> 结尾），之后才可以向它输入命令。
+    /// </summary>
+    /// <remarks>
+    /// Shell 开始读取命令之前就输入：在 Linux / macOS 上命令会被终端立即回显、输出接在提示符之后；在负载很高的 Windows 运行器上，
+    /// 曾出现会话屏幕 30 秒内始终为空的失败。先等提示符可以避免这一竞争，失败信息同时附上会话自己的屏幕与外层界面，
+    /// 能分清是 Shell 没有启动还是界面没有刷新。
+    /// </remarks>
+    /// <param name="client">连接测试 daemon 的客户端。</param>
+    /// <param name="id">会话标识。</param>
+    /// <param name="ui">外层界面的伪终端会话，仅用于失败时输出诊断屏幕。</param>
+    /// <returns>表示等待过程的任务。</returns>
+    internal static Task WaitForShellPrompt(DaemonClient client, string id, ITerminalSession ui) =>
+        WaitForSessionScreen(client, id, ui, screen =>
+            screen.Replace("\r", "").Split('\n').Select(line => line.TrimEnd()).LastOrDefault(line => line.Length > 0) is [.., '>' or '$' or '#'],
+            "Shell prompt did not appear");
+
+    /// <summary>
+    /// 每 100 毫秒读取一次会话的屏幕文本，最长 30 秒，直到条件成立；仍不成立则使测试失败，并附上会话屏幕与外层界面屏幕。
+    /// </summary>
+    /// <param name="client">连接测试 daemon 的客户端。</param>
+    /// <param name="id">会话标识。</param>
+    /// <param name="ui">外层界面的伪终端会话，仅用于失败时输出诊断屏幕。</param>
+    /// <param name="condition">对会话屏幕文本的判断。</param>
+    /// <param name="step">失败信息中描述所等待步骤的文字。</param>
+    /// <returns>表示等待过程的任务。</returns>
+    internal static async Task WaitForSessionScreen(DaemonClient client, string id, ITerminalSession ui, Func<string, bool> condition, string step)
+    {
+        var end = DateTime.UtcNow.AddSeconds(30);
+        var screen = "";
+        while (DateTime.UtcNow < end)
+        {
+            screen = (await client.CallAsync(new("screen", id))).Text ?? "";
+            if (condition(screen)) return;
+            await Task.Delay(100);
+        }
+        Assert.Fail($"{step}. Session screen:\n{screen}\nOuter UI:\n{ui.Screen.GetText()}");
     }
 }

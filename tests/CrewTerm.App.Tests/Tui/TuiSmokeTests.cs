@@ -327,6 +327,9 @@ public sealed class TuiSmokeTests
             await WaitUntil(() => terminal.Screen.GetText().Contains("F10 Detach"), terminal, "ready workspace");
             var first = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Agent A"));
             var second = await client.CallAsync(new("create", Command: TestShell.Interactive, WorkingDirectory: root, Name: "Agent B"));
+            // Shell 开始读取命令之后再输入（原因见 LayoutTuiTests.WaitForShellPrompt）。
+            await LayoutTuiTests.WaitForShellPrompt(client, first.SessionId!, terminal);
+            await LayoutTuiTests.WaitForShellPrompt(client, second.SessionId!, terminal);
             await client.CallAsync(new("input", first.SessionId, Text: "echo CREW_A_READY\r"));
             await client.CallAsync(new("input", second.SessionId, Text: "echo CREW_B_READY\r"));
             terminal.Write("\u001b[19~"); // F8：分屏
