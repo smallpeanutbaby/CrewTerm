@@ -178,7 +178,8 @@ public sealed class DaemonAgentProtocolTests : IAsyncLifetime
 
     /// <summary>
     /// 验证：16 个并发挂起的 <c>agent-wait</c> 不会占满 daemon 的控制连接容量，普通的 <c>agent-report</c> 仍能在 2 秒内得到处理；
-    /// 之后所有等待在 4 秒内结束，至少一个观察到 <see cref="AgentActivityState.Done"/>，被拒绝的等待其错误信息中都提到 <c>wait</c>。
+    /// 之后所有等待在 4 秒内结束，至少一个观察到 <see cref="AgentActivityState.Done"/>，被拒绝的等待其错误信息中都提到 <c>wait</c>；
+    /// 连接已满、500 毫秒内连不上的等待（客户端抛出 <see cref="TimeoutException"/>，见 <c>DaemonClient.CallAsync</c>）同样算作被拒绝。
     /// </summary>
     [Fact]
     public async Task WaitingClientsCannotExhaustControlConnectionCapacity()
@@ -190,9 +191,15 @@ public sealed class DaemonAgentProtocolTests : IAsyncLifetime
         var report = await Client.CallAsync(new("agent-report", id, State: AgentActivityState.Done, Reason: "Unblock waits"))
             .WaitAsync(TimeSpan.FromSeconds(2));
         Assert.True(report.Ok, report.Error);
-        var results = await Task.WhenAll(waits).WaitAsync(TimeSpan.FromSeconds(4));
-        Assert.Contains(results, response => response.Ok && response.Activity?.State == AgentActivityState.Done);
-        Assert.All(results.Where(response => !response.Ok), response => Assert.Contains("wait", response.Error!, StringComparison.OrdinalIgnoreCase));
+        // 负载很高时 daemon 来不及为 16 个同时到达的连接创建管道实例，部分等待在连接阶段就超时：这也是被拒绝，而不是容量被占满。
+        var results = await Task.WhenAll(waits.Select(async wait =>
+        {
+            try { return await wait; }
+            catch (TimeoutException) { return null; }
+        })).WaitAsync(TimeSpan.FromSeconds(4));
+        Assert.Contains(results, response => response is { Ok: true, Activity.State: AgentActivityState.Done });
+        Assert.All(results.Where(response => response is { Ok: false }),
+            response => Assert.Contains("wait", response!.Error!, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

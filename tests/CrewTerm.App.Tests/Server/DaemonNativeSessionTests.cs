@@ -112,8 +112,7 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
         var resumed = await Client.CallAsync(new("session-resume", created.SessionId));
         Assert.True(resumed.Ok, resumed.Error);
         Assert.Equal(created.SessionId, resumed.SessionId);
-        await WaitForFileAsync(identityFile);
-        Assert.Equal(nativeId, File.ReadAllText(identityFile).Trim());
+        Assert.Equal(nativeId, (await Poll.ReadAllTextAsync(identityFile)).Trim());
         Assert.Single((await Client.CallAsync(new("list"))).Sessions!, item => item.Id == created.SessionId);
     }
 
@@ -142,8 +141,7 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
         var created = await Client.CallAsync(new("create", Command: TestShell.WriteVariable("CREWTERM_SESSION_ID", "session-id.txt"), WorkingDirectory: state));
         Assert.True(created.Ok, created.Error);
         var path = Path.Combine(state, "session-id.txt");
-        await WaitForFileAsync(path);
-        Assert.Equal(created.SessionId, File.ReadAllText(path).Trim());
+        Assert.Equal(created.SessionId, (await Poll.ReadAllTextAsync(path)).Trim());
         Assert.Equal(parentValue, Environment.GetEnvironmentVariable("CREWTERM_SESSION_ID"));
     }
 
@@ -257,25 +255,12 @@ public sealed class DaemonNativeSessionTests : IAsyncLifetime
         await RestartAsync();
         var resumed = await Client.CallAsync(new("session-resume", created.SessionId));
         Assert.True(resumed.Ok, resumed.Error);
-        await WaitForFileAsync(argsFile);
-        var arguments = JsonSerializer.Deserialize<string[]>(File.ReadAllText(argsFile))!;
+        var arguments = JsonSerializer.Deserialize<string[]>(await Poll.ReadAllTextAsync(argsFile))!;
         Assert.Contains("work", arguments);
         Assert.Contains("model_provider=custom backend", arguments);
         Assert.Contains(project, arguments);
         Assert.Contains("resume", arguments);
         Assert.Contains(nativeId, arguments);
-    }
-
-    /// <summary>
-    /// 在 5 秒内每 40 毫秒检查一次，直到文件存在且长度非零；随后断言文件存在（超时时文件可能仍为空，由调用方的后续断言暴露）。
-    /// </summary>
-    /// <param name="path">等待出现的文件路径。</param>
-    /// <returns>表示等待过程的任务。</returns>
-    private static async Task WaitForFileAsync(string path)
-    {
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while ((!File.Exists(path) || new FileInfo(path).Length == 0) && DateTime.UtcNow < deadline) await Task.Delay(40);
-        Assert.True(File.Exists(path), "Expected file: " + path);
     }
 
     /// <summary>

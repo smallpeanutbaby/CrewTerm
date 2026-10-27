@@ -328,7 +328,7 @@ public sealed class LocalPluginTests : IDisposable
     }
 
     /// <summary>
-    /// 递归删除本测试实例的临时根目录及其中所有文件。
+    /// 递归删除本测试实例的临时根目录及其中所有文件；刚被结束的插件进程可能仍短暂占用目录，见 <see cref="TemporaryDirectory.Delete"/>。
     /// </summary>
-    public void Dispose() => Directory.Delete(root, true);
+    public void Dispose() => TemporaryDirectory.Delete(root);
 }
