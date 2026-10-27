@@ -197,7 +197,7 @@ macOS `~/Library/Application Support/CrewTerm`），由 `StateFiles.EnsureDirect
 | daemon 继承调用方当前目录，导致该目录无法删除/重命名 | `DetachedProcess` | 工作目录改为程序所在目录 |
 | worktree 路径带末尾分隔符时创建成功却抛出异常 | `GitService` | 路径先规范化 |
 | `git status` 与 Agent 的 git 操作争抢 `index.lock` | `GitService` | 设置 `GIT_OPTIONAL_LOCKS=0` |
-| 文件区只隐藏小写 `.git` | `FileWorkspace` | 不区分大小写 |
+| 文件列表只隐藏小写 `.git` | `FileWorkspace` | 不区分大小写 |
 
 ### 第二轮（v0.2 完成后，整体工程化）
 

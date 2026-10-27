@@ -10,17 +10,18 @@ namespace CrewTerm.App.UI.Windows;
 /// <remarks>
 /// <para>前缀之后的键：<c>N</c> 新建空间，<c>c</c> 新建标签，<c>n</c> / <c>p</c> 下一个 / 上一个标签，<c>1</c>–<c>9</c> 跳到第几个标签，
 /// <c>T</c> 重命名标签，<c>X</c> 关闭标签，<c>v</c> 向右分屏，<c>-</c> 向下分屏，<c>o</c> 下一个面板，<c>x</c> 关闭面板，
-/// <c>w</c> 聚焦空间列表，<c>g</c> 聚焦 Agent 列表，<c>b</c> 显示或隐藏侧栏，<c>q</c> 离开界面（会话继续运行），<c>?</c> 帮助，
+/// <c>w</c> 聚焦空间列表，<c>g</c> 聚焦 Agent 列表，<c>f</c> 聚焦文件列表，<c>e</c> 显示或隐藏代码查看器，
+/// <c>b</c> 显示或隐藏侧栏，<c>q</c> 离开界面（会话继续运行），<c>?</c> 帮助，
 /// Esc 取消；再按一次 <c>Ctrl+b</c> 把 <c>Ctrl+b</c> 本身发给获得焦点的终端。超时、修饰键与重复按键的规则见 <see cref="PrefixKeyState"/>。</para>
 /// <para>原有的 F1–F10 快捷键全部保留，前缀键只是另一种方式。</para>
 /// </remarks>
 public sealed partial class WorkspaceWindow
 {
     /// <summary>
-    /// 前缀键之后各键的说明，显示在状态栏中。
+    /// 前缀键之后各键的说明，显示在状态栏中；不超过 116 列，120 列宽的终端中也能完整显示。
     /// </summary>
     private const string PrefixHint =
-        "ctrl+b  ·  N space  c tab  n/p next/prev  1-9 tab  v/- split  o next pane  x close  w spaces  g agents  b sidebar  q detach  ? help";
+        "^b  N space  c/n/p/1-9 tab  v/- split  o pane  x close  w/g/f spaces/agents/files  e code  b sidebar  q detach  ?";
 
     /// <summary>
     /// 前缀键的状态。
@@ -94,6 +95,8 @@ public sealed partial class WorkspaceWindow
         'x' => ClosePane,
         'w' => () => FocusSidebar(spaceSection),
         'g' => () => FocusSidebar(agentSection),
+        'f' => () => FocusSidebar(fileSection),
+        'e' => ToggleEditor,
         'b' => ToggleSidebar,
         'q' => Detach,
         '?' => ShowHelp,

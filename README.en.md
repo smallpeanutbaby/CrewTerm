@@ -100,7 +100,7 @@ crewterm --project ~/work/my-app
 1. **F2** adds more local projects.
 2. **F3** starts an installed agent (the list shows the resolved program path) or a custom command such as `bash`, `pwsh` or `ssh host`.
 3. **F9** opens the command palette: `Terminal: Split right` and friends split in four directions, `Tab: New` adds a tab; drag dividers to resize.
-4. **Alt+4** browses files (the file pane is hidden by default; **F4** toggles it), **Alt+3** edits, **F5** saves; **F6** shows Git changes; **F7** runs tests or pipelines.
+4. Click a file under `files` in the sidebar to view and edit it in the code viewer below the terminal, **F5** saves (**F4** shows / hides the viewer, Esc returns to the terminal); **F6** shows Git changes; **F7** runs tests or pipelines.
 5. Use `Agent: Notifications`, `Agent: Inbox` and `Agent: Handoff prompt` from the palette to coordinate agents.
 6. **F10** detaches; sessions and tasks keep running. Run `crewterm` again to return to the same layout.
 
@@ -112,11 +112,11 @@ Agents working in the same directory see each other's edits. To isolate them, cr
 | --- | --- |
 | F1 | Help |
 | F2 / F3 | Add project / new agent or terminal |
-| F4 / F5 | Toggle file pane / save file |
+| F4 / F5 | Toggle code viewer / save file |
 | F6 / F7 | Git / background tasks and pipelines |
 | F8 / F9 | Quick split switch / searchable command palette |
 | F10 | Detach, keeping sessions and tasks running |
-| Alt+1 … Alt+5 | Focus first / second terminal pane, editor, file list, sidebar `agents` |
+| Alt+1 … Alt+5 | Focus first / second terminal pane, code viewer, sidebar `files`, sidebar `agents` |
 | Ctrl+b, then a key | herdr-style prefix keys: `N` new space, `c` new tab, `v` / `-` split, `x` close pane, `q` detach, `?` all keys |
 | Ctrl+Shift+P | Command palette |
 | Ctrl+Shift+V / Ctrl+Shift+C | Paste into the terminal / copy selection (or the visible screen) |
@@ -213,7 +213,7 @@ Run `./scripts/verify.sh` (or `./scripts/verify.ps1`) before submitting changes.
 - Edited files are limited to 4 MiB, search to 500 results, checkpoints to 4,000 files / 64 MiB; restores are per file, not one atomic transaction.
 - Up to 32 terminal sessions per service; tasks keep the last 256K characters of output and the latest 100 history entries.
 - Ending a session ends its whole process tree (Windows job object / Unix process group). On Unix, descendants that start their own session (for example with `setsid`) are outside that group.
-- No plugin marketplace, multi-device sync or remote machine management; you can run `ssh` in a terminal, but the file pane and service are local.
+- No plugin marketplace, multi-device sync or remote machine management; you can run `ssh` in a terminal, but the file browser and service are local.
 
 ## Documentation
 

@@ -41,7 +41,7 @@ internal static class CrewTermHelp
         crewterm plugin-history | plugin-remove ID
         crewterm stop                                  Stop daemon, terminals and jobs
 
-        F1 Help  F2 Project  F3 Agent  F4 Files  F5 Save  F6 Git
+        F1 Help  F2 Project  F3 Agent  F4 Code viewer  F5 Save  F6 Git
         F7 Tasks  F8 Split  F9 Commands (directional splits and tabs)  F10 Detach
         Ctrl+Shift+P Commands | Ctrl+Shift+V Paste | Ctrl+Shift+C Copy selection/screen
         Alt+1/2 Terminal focus | Alt+3 Editor | Alt+4 Files | Alt+5 Agents

@@ -370,21 +370,21 @@ public sealed partial class WorkspaceWindow
     }
 
     /// <summary>
-    /// 询问行号并在编辑器中跳转，然后显示文件区并聚焦编辑器；输入不是整数时什么也不做。
+    /// 询问行号并在编辑器中跳转，然后显示代码查看器并聚焦编辑器；输入不是整数时什么也不做。
     /// </summary>
     private void GoToLine()
     {
         var line = Dialogs.Prompt(application, "Go to line", "Line number", "1");
-        if (int.TryParse(line, out var value)) { editor.GoToLine(value); ShowFiles(); editor.View.SetFocus(); }
+        if (int.TryParse(line, out var value)) { editor.GoToLine(value); ShowEditor(); editor.View.SetFocus(); }
     }
 
     /// <summary>
-    /// 询问要查找的文本，在编辑器中从光标处查找下一处（不区分大小写，见 <see cref="Dialogs.Find"/>），然后显示文件区并聚焦编辑器。
+    /// 询问要查找的文本，在编辑器中从光标处查找下一处（不区分大小写，见 <see cref="Dialogs.Find"/>），然后显示代码查看器并聚焦编辑器。
     /// </summary>
     private void FindInFile()
     {
         Dialogs.Find(application, editor.View, "Find in file");
-        ShowFiles(); editor.View.SetFocus();
+        ShowEditor(); editor.View.SetFocus();
     }
 
     /// <summary>

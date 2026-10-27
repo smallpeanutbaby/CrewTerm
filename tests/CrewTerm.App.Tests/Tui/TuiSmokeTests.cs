@@ -241,39 +241,60 @@ public sealed class TuiSmokeTests
     }
 
     /// <summary>
-    /// 验证：从文件列表（Alt+4）打开 <c>hello.cs</c> 并编辑，按 F5 保存后磁盘内容包含该编辑；继续编辑但不保存时，Esc 触发的框架退出会弹出 <c>Unsaved changes</c> 保护而不退出，磁盘内容不变；
-    /// 取消后按 F10 分离再次弹出保护，按 Alt+S 选择保存后才以退出码 0 退出，此时未保存的编辑已写入磁盘。
+    /// 验证侧栏 <c>files</c> 分区与代码查看器：单击 <c>docs/</c> 进入子目录、单击 <c>..</c> 返回；磁盘上新建的文件无需操作就出现在列表中；
+    /// 正在浏览的目录被删除时自动退回上级目录；
+    /// 单击 <c>hello.cs</c> 在终端下方打开，编辑后按 F5 保存到磁盘；继续编辑但不保存时，在查看器中按 Esc 只把焦点还给终端，
+    /// 不分离工作台也不弹出保护，磁盘内容不变；按 F10 分离时弹出 <c>Unsaved changes</c> 保护，按 Alt+S 选择保存后才以退出码 0 退出，
+    /// 此时未保存的编辑已写入磁盘。
     /// </summary>
     [Fact]
-    public async Task FileEditingSavesAndFrameworkQuitCannotDiscardDirtyBuffer()
+    public async Task FilesSectionOpensTheViewerAndDetachCannotDiscardDirtyBuffer()
     {
         var root = CrewTermBuild.Repository;
         var executable = CrewTermBuild.Executable;
         var state = Path.Combine(Path.GetTempPath(), "CrewTermTui", Guid.NewGuid().ToString("N"));
         var project = Path.Combine(state, "project");
-        Directory.CreateDirectory(project);
+        Directory.CreateDirectory(Path.Combine(project, "docs"));
+        File.WriteAllText(Path.Combine(project, "docs", "guide.md"), "# GUIDE\n");
         var file = Path.Combine(project, "hello.cs");
         File.WriteAllText(file, "// INITIAL_TEXT\n");
         try
         {
             using var terminal = TerminalSession.Start("editor-ui", $"\"{executable}\" --state-dir \"{state}\" --project \"{project}\"", root, 150, 45);
-            await WaitUntil(() => terminal.Screen.GetText().Contains("F10 Detach"), terminal, "workspace ready");
-            // 文件区默认隐藏：Alt+4 显示文件区并聚焦文件列表。
-            terminal.Write("\u001b4");
-            await WaitUntil(() => terminal.Screen.GetText().Contains("hello.cs"), terminal, "file browser");
-            await Task.Delay(250); terminal.Write("\r");
-            await WaitUntil(() => terminal.Screen.GetText().Contains("INITIAL_TEXT"), terminal, "opened code");
+            await WaitUntil(() => terminal.Screen.GetText().Contains("F10 Detach") && terminal.Screen.GetText().Contains("· hello.cs"), terminal, "files section");
+            ClickText(terminal, "▸ docs/");
+            await WaitUntil(() => terminal.Screen.GetText().Contains("· guide.md") && terminal.Screen.GetText().Contains("files  /docs"), terminal, "entered docs");
+            // ‹ .. 正好在刚才单击 docs/ 的位置：500 毫秒内的第二次按下会被当作双击的后半而忽略，所以先等过双击间隔。
+            await Task.Delay(700);
+            ClickText(terminal, "‹ ..");
+            await WaitUntil(() => terminal.Screen.GetText().Contains("· hello.cs"), terminal, "back at the root");
+            // Agent 在后台创建的文件：列表定期在后台重新读取，无需任何操作就会出现。
+            File.WriteAllText(Path.Combine(project, "later.txt"), "later\n");
+            await WaitUntil(() => terminal.Screen.GetText().Contains("· later.txt"), terminal, "background file refresh");
+            // 正在浏览的目录被删除：自动退回最近的仍然存在的上级目录，状态栏说明原因。
+            var scratch = Path.Combine(project, "scratch");
+            Directory.CreateDirectory(scratch);
+            await WaitUntil(() => terminal.Screen.GetText().Contains("▸ scratch/"), terminal, "new folder");
+            ClickText(terminal, "▸ scratch/");
+            await WaitUntil(() => terminal.Screen.GetText().Contains("files  /scratch"), terminal, "entered scratch");
+            Directory.Delete(scratch);
+            await WaitUntil(() => terminal.Screen.GetText().Contains("/scratch no longer exists") && terminal.Screen.GetText().Contains("· hello.cs"),
+                terminal, "fallback to the parent folder");
+            ClickText(terminal, "· hello.cs");
+            await WaitUntil(() => terminal.Screen.GetText().Contains("INITIAL_TEXT") && terminal.Screen.GetText().Contains("hello.cs  ·  F5 Save"), terminal, "opened code");
             terminal.Write("SAVED_EDIT"); await Task.Delay(250); terminal.Write("\u001b[15~");
             await WaitUntil(() => File.ReadAllText(file).Contains("SAVED_EDIT"), terminal, "saved editor text");
-            terminal.Write("UNSAVED_EDIT"); await Task.Delay(250);
-            terminal.Write("\u001b4"); await Task.Delay(250); terminal.Write("\u001b");
-            await WaitUntil(() => terminal.Screen.GetText().Contains("Unsaved changes"), terminal, "guard for framework Escape quit");
-            Assert.False(terminal.HasExited);
+            terminal.Write("UNSAVED_EDIT");
+            await WaitUntil(() => terminal.Screen.GetText().Contains("* hello.cs"), terminal, "dirty title");
+            // Esc 把焦点交给终端面板（这里没有会话，键入的字符只让状态栏提示 F3）；Esc 与紧随的按键可能被合在一起解析，未生效就重按。
+            await RetryUntil(terminal, () => { terminal.Write("\u001b"); return Task.Delay(300).ContinueWith(_ => terminal.Write("z")); },
+                () => terminal.Screen.GetText().Contains("F3 starts a terminal.") || terminal.HasExited || terminal.Screen.GetText().Contains("Unsaved changes"));
+            Assert.False(terminal.HasExited, "Esc in the code viewer must not detach the workspace.");
+            Assert.DoesNotContain("Unsaved changes", terminal.Screen.GetText());
+            Assert.Contains("F3 starts a terminal.", terminal.Screen.GetText());
             Assert.DoesNotContain("UNSAVED_EDIT", File.ReadAllText(file));
-            terminal.Write("\u001b"); await Task.Delay(300);
-            Assert.False(terminal.HasExited);
             terminal.Write("\u001b[21~");
-            await WaitUntil(() => terminal.Screen.GetText().Contains("Unsaved changes"), terminal, "detach guard after cancelling quit");
+            await WaitUntil(() => terminal.Screen.GetText().Contains("Unsaved changes"), terminal, "detach guard");
             // “保存”必须有显式的键盘快捷键（这里发送 Alt+S）；Enter 默认对应“取消”。
             terminal.Write("\u001bs");
             await WaitUntil(() => terminal.HasExited, terminal, "save and detach");
@@ -436,5 +457,20 @@ public sealed class TuiSmokeTests
             await action();
             for (var waited = 0; waited < 100 && !succeeded(); waited++) await Task.Delay(50);
         }
+    }
+
+    /// <summary>
+    /// 在屏幕上找到一段文字，并在它的第三个字符处发送一次 SGR 鼠标左键按下与释放（单击）。
+    /// </summary>
+    /// <param name="terminal">运行工作区界面的伪终端会话。</param>
+    /// <param name="label">要单击的文字；只单击第一次出现的位置，文字中的字符都应占一列。</param>
+    private static void ClickText(ITerminalSession terminal, string label)
+    {
+        var lines = terminal.Screen.GetText().Split('\n');
+        var row = Array.FindIndex(lines, line => line.Contains(label, StringComparison.Ordinal));
+        Assert.True(row >= 0, $"'{label}' is not on screen:\n{terminal.Screen.GetText()}");
+        // SGR 坐标从 1 开始：第 row 行、第 column 列的字符是 (column + 1, row + 1)。
+        var column = lines[row].IndexOf(label, StringComparison.Ordinal) + 3;
+        terminal.Write($"\u001b[<0;{column};{row + 1}M\u001b[<0;{column};{row + 1}m");
     }
 }

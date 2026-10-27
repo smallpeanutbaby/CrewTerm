@@ -8,12 +8,12 @@ using Attribute = Terminal.Gui.Drawing.Attribute;
 namespace CrewTerm.App.UI.Controls;
 
 /// <summary>
-/// herdr 风格的侧栏分区：第一行是小写标题与可点击的 <c>+ new</c>，其下每行为“状态符号  名称  暗色说明”。
+/// herdr 风格的侧栏分区：第一行是小写标题、可选的暗色补充说明与可点击的 <c>+ new</c>，其下每行为“状态符号  名称  暗色说明”。
 /// </summary>
 /// <remarks>
-/// <para>用于左侧的 <c>spaces</c>（项目）与 <c>agents</c>（会话）两个分区。没有任何行时显示一行可点击的占位提示。</para>
-/// <para>交互：方向键、Home/End、PageUp/PageDown 移动选择，Enter 激活，<c>+</c> 新建，Shift+F10 打开选中行的菜单，Esc 把焦点还给终端；
-/// 鼠标左键单击一行即选中并激活，右键打开该行的菜单，单击 <c>+ new</c> 或占位提示即新建，滚轮滚动列表。</para>
+/// <para>用于左侧的 <c>spaces</c>（项目）、<c>agents</c>（会话）与 <c>files</c>（当前项目的文件）三个分区。没有任何行时显示一行可点击的占位提示。</para>
+/// <para>交互：方向键、Home/End、PageUp/PageDown 移动选择，输入字符跳到下一个以它开头的行，Enter 激活，<c>+</c> 新建，Shift+F10 打开选中行的菜单，Esc 把焦点还给终端；
+/// 鼠标左键单击一行即选中并激活，右键打开该行的菜单，单击 <c>+ new</c>（<see cref="ActionLabel"/>）或占位提示即新建，滚轮滚动列表。</para>
 /// <para>鼠标按最近一次<b>绘制出来</b>的行判断点中了哪一行：行内容在两次绘制之间可能被刷新（例如 Agent 状态变化导致重新排序），
 /// 用户点击的应当是他看到的那一行。回调收到的是行本身，调用方按 <see cref="SidebarRow.Key"/> 找回对象。</para>
 /// <para>所有回调都在 UI 线程触发；本视图不保存任何业务状态，由工作台通过 <see cref="SetRows"/> 刷新内容。</para>
@@ -51,11 +51,6 @@ public sealed class SidebarSection : View
     private const int HeadingColor = 0x89b4fa;
 
     /// <summary>
-    /// 标题行右侧的新建按钮文本。
-    /// </summary>
-    private const string NewLabel = "+ new";
-
-    /// <summary>
     /// 名称至少保留的显示宽度；放不下时缩短右侧说明。
     /// </summary>
     private const int MinimumTitleColumns = 6;
@@ -86,14 +81,64 @@ public sealed class SidebarSection : View
     private int top;
 
     /// <summary>
+    /// 双击的两次按下之间的最长间隔；见 <see cref="HandleMouse"/> 中对第二次按下的处理。
+    /// </summary>
+    private static readonly TimeSpan DoubleClickInterval = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>
+    /// 最近一次左键单击激活行的时间（<see cref="Environment.TickCount64"/>，毫秒）、位置，以及激活之前的行。
+    /// </summary>
+    private (long At, System.Drawing.Point Position, IReadOnlyList<SidebarRow>? Rows) lastActivation;
+
+    /// <summary>
+    /// <see cref="HeadingDetail"/> 的存储字段。
+    /// </summary>
+    private string headingDetail = "";
+
+    /// <summary>
+    /// <see cref="EmptyText"/> 的存储字段。
+    /// </summary>
+    private string emptyText;
+
+    /// <summary>
+    /// <see cref="ActionLabel"/> 的存储字段。
+    /// </summary>
+    private string actionLabel = "+ new";
+
+    /// <summary>
     /// 小写的分区标题，例如 <c>spaces</c>。
     /// </summary>
     public string Heading { get; }
 
     /// <summary>
-    /// 没有任何行时显示的占位提示（前面自动加 <c>+ </c>），例如 <c>add a project  F2</c>。
+    /// 标题后面的暗色补充说明（例如 <c>files</c> 分区的当前目录）；为空字符串时不显示。
     /// </summary>
-    public string EmptyText { get; }
+    /// <remarks>
+    /// 放不下时截掉<b>开头</b>（以 <c>…</c> 开头，见 <see cref="FitEnd"/>），路径的最后一段最有用。
+    /// </remarks>
+    public string HeadingDetail
+    {
+        get => headingDetail;
+        set { if (headingDetail != value) { headingDetail = value; SetNeedsDraw(); } }
+    }
+
+    /// <summary>
+    /// 没有任何行时显示的占位提示，例如 <c>+ add a project  ·  F2</c>；单击它与按 Enter 都请求 <see cref="CreateRequested"/>。
+    /// </summary>
+    public string EmptyText
+    {
+        get => emptyText;
+        set { if (emptyText != value) { emptyText = value; SetNeedsDraw(); } }
+    }
+
+    /// <summary>
+    /// 标题行右侧可点击的按钮文本，默认 <c>+ new</c>；为空字符串时不显示按钮，标题行也不响应单击。
+    /// </summary>
+    public string ActionLabel
+    {
+        get => actionLabel;
+        set { if (actionLabel != value) { actionLabel = value; SetNeedsDraw(); } }
+    }
 
     /// <summary>
     /// 一行被激活（Enter 或左键单击）时调用，参数为该行。
@@ -134,11 +179,11 @@ public sealed class SidebarSection : View
     /// 创建一个可获得焦点的侧栏分区。
     /// </summary>
     /// <param name="heading">小写的分区标题。</param>
-    /// <param name="emptyText">没有任何行时的占位提示。</param>
+    /// <param name="emptyText">没有任何行时的占位提示（原样显示）。</param>
     public SidebarSection(string heading, string emptyText)
     {
         Heading = heading;
-        EmptyText = emptyText;
+        this.emptyText = emptyText;
         CanFocus = true;
         HasFocusChanged += (_, _) => SetNeedsDraw();
         KeyDown += (_, key) => key.Handled = HandleKey(key);
@@ -149,18 +194,56 @@ public sealed class SidebarSection : View
     /// 替换显示的行。
     /// </summary>
     /// <remarks>
-    /// 只有选择确实改变时才滚动到选中行；否则保持用户用滚轮滚到的位置，只在行数变少时收回越界的滚动。
+    /// 只有选择确实改变（或 <paramref name="reveal"/> 为 <see langword="true"/>）时才滚动到选中行；
+    /// 否则保持用户用滚轮滚到的位置，只在行数变少时收回越界的滚动。
     /// </remarks>
     /// <param name="value">新的行。</param>
     /// <param name="select">要选中的行索引；为 <see langword="null"/> 时保持原索引。超出范围时取最近的有效行。</param>
-    public void SetRows(IReadOnlyList<SidebarRow> value, int? select = null)
+    /// <param name="reveal">
+    /// 换成了一组全新的行（例如 <c>files</c> 分区进入了另一个目录）时为 <see langword="true"/>：即使选中索引没变也滚动到选中行，
+    /// 不沿用上一组行的滚动位置。
+    /// </param>
+    public void SetRows(IReadOnlyList<SidebarRow> value, int? select = null, bool reveal = false)
     {
         var previous = selected;
         rows = value;
         selected = Math.Clamp(select ?? selected, 0, Math.Max(0, rows.Count - 1));
-        if (selected != previous) EnsureVisible();
+        if (reveal || selected != previous) EnsureVisible();
         else ClampTop();
         SetNeedsDraw();
+    }
+
+    /// <summary>
+    /// 原地刷新显示的行（同一组行的新版本，例如目录中多了或少了几个条目）：选中行与第一个可见行都按 <see cref="SidebarRow.Key"/> 保持。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="SetRows"/> 不同，上方插入或删除了行时列表不会跳动，也不会滚回选中行：用户用滚轮滚到的内容仍在原来的位置。
+    /// 原选中行或原第一个可见行已不存在时，保持原索引（限制在有效范围内）。
+    /// </remarks>
+    /// <param name="value">新的行。</param>
+    public void Refresh(IReadOnlyList<SidebarRow> value)
+    {
+        var selectedKey = rows.Count > 0 ? rows[selected].Key : null;
+        var topKey = top < rows.Count ? rows[top].Key : null;
+        rows = value;
+        var index = IndexOf(selectedKey);
+        selected = Math.Clamp(index >= 0 ? index : selected, 0, Math.Max(0, rows.Count - 1));
+        var first = IndexOf(topKey);
+        if (first >= 0) top = first;
+        ClampTop();
+        SetNeedsDraw();
+    }
+
+    /// <summary>
+    /// 按键查找行。
+    /// </summary>
+    /// <param name="key">行的键；为 <see langword="null"/> 时视为找不到。</param>
+    /// <returns>在 <see cref="rows"/> 中的索引；找不到时为 -1。</returns>
+    private int IndexOf(string? key)
+    {
+        if (key is null) return -1;
+        for (var index = 0; index < rows.Count; index++) if (rows[index].Key == key) return index;
+        return -1;
     }
 
     /// <summary>
@@ -183,6 +266,24 @@ public sealed class SidebarSection : View
             used += width;
         }
         return result.Append('…').ToString();
+    }
+
+    /// <summary>
+    /// 把文本截断到指定显示宽度，但保留<b>末尾</b>：超出时以 <c>…</c> 开头（适合路径，最后一段最有用）。
+    /// </summary>
+    /// <param name="text">原始文本。</param>
+    /// <param name="columns">最大显示宽度。</param>
+    /// <returns>显示宽度不超过 <paramref name="columns"/> 的文本；宽度不大于 0 时为空字符串。</returns>
+    public static string FitEnd(string text, int columns)
+    {
+        if (columns <= 0) return "";
+        if (text.GetColumns() <= columns) return text;
+        var runes = text.EnumerateRunes().ToArray();
+        var used = 0;
+        var start = runes.Length;
+        while (start > 0 && used + Math.Max(0, runes[start - 1].GetColumns()) <= columns - 1)
+            used += Math.Max(0, runes[--start].GetColumns());
+        return "…" + string.Concat(runes[start..].Select(rune => rune.ToString()));
     }
 
     /// <summary>
@@ -245,7 +346,27 @@ public sealed class SidebarSection : View
         if (key == Key.Esc) { FocusReturnRequested?.Invoke(); return true; }
         if (key.AsRune.Value == '+') { CreateRequested?.Invoke(); return true; }
         if (key == Key.F10.WithShift && rows.Count > 0) { ContextRequested?.Invoke(rows[selected]); return true; }
+        if (key.AsRune.Value > ' ' && !key.IsCtrl && !key.IsAlt) return JumpTo(key.AsRune.ToString());
         return false;
+    }
+
+    /// <summary>
+    /// 输入一个字符时跳到下一个名称以它开头的行（不区分大小写，从选中行之后开始，到末尾后从头继续），只移动选择不激活。
+    /// </summary>
+    /// <param name="prefix">输入的字符。</param>
+    /// <returns>始终为 <see langword="true"/>：字符已被处理，没有匹配的行时保持原选择。</returns>
+    private bool JumpTo(string prefix)
+    {
+        for (var step = 1; step <= rows.Count; step++)
+        {
+            var index = (selected + step) % rows.Count;
+            if (!rows[index].Title.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+            selected = index;
+            EnsureVisible();
+            SetNeedsDraw();
+            break;
+        }
+        return true;
     }
 
     /// <summary>
@@ -253,6 +374,7 @@ public sealed class SidebarSection : View
     /// </summary>
     /// <remarks>
     /// 只响应按下事件；释放以及 Terminal.Gui 合成的单击、双击、三击事件被吞掉，避免同一次点击触发两次操作，也避免默认的激活命令把焦点抢回侧栏。
+    /// 双击的第二次原始按下若落在已被第一次激活换掉的行上（<see cref="DoubleClickInterval"/> 内、同一位置），整个忽略，双击因此只激活一次。
     /// 点中的行按最近一次绘制的内容判断，再在当前行中按 <see cref="SidebarRow.Key"/> 找回对应的行。
     /// </remarks>
     /// <param name="mouse">鼠标事件，位置为视口坐标。</param>
@@ -275,10 +397,15 @@ public sealed class SidebarSection : View
         var right = flags.HasFlag(MouseFlags.RightButtonPressed) && !flags.HasFlag(MouseFlags.PositionReport);
         if (!left && !right) return;
         mouse.Handled = true;
+        // 双击由两次原始的按下组成：第一次激活后行已被换掉（例如进入了目录）时，第二次按下会落在新列表的另一行上，整个忽略它，
+        // 也不抢回焦点（第一次单击文件后焦点已交给代码查看器）。
+        var now = Environment.TickCount64;
+        if (left && lastActivation.Rows is not null && !ReferenceEquals(rows, lastActivation.Rows) && lastActivation.Position == position &&
+            now - lastActivation.At < DoubleClickInterval.TotalMilliseconds) return;
         if (!HasFocus) SetFocus();
         if (position.Y == 0)
         {
-            if (left && position.X >= Viewport.Width - NewLabel.Length - 1) CreateRequested?.Invoke();
+            if (left && ActionLabel.Length > 0 && position.X >= Viewport.Width - ActionLabel.GetColumns() - 1) CreateRequested?.Invoke();
             return;
         }
         var shown = drawnRows.Count > 0 || rows.Count == 0 ? drawnRows : rows;
@@ -289,9 +416,13 @@ public sealed class SidebarSection : View
         }
         var drawnIndex = (ReferenceEquals(shown, drawnRows) ? drawnTop : top) + position.Y - 1;
         if (drawnIndex < 0 || drawnIndex >= shown.Count) return;
-        var index = rows.ToList().FindIndex(row => row.Key == shown[drawnIndex].Key);
+        var index = IndexOf(shown[drawnIndex].Key);
         if (index < 0) return;
-        if (left) Activate(index);
+        if (left)
+        {
+            lastActivation = (now, position, rows);
+            Activate(index);
+        }
         else
         {
             selected = index;
@@ -313,11 +444,18 @@ public sealed class SidebarSection : View
         drawnRows = rows;
         drawnTop = top;
         for (var y = 0; y < Viewport.Height; y++) Paint(0, y, new string(' ', width), TitleColor, Background);
-        Paint(1, 0, Fit(Heading, width - NewLabel.Length - 3), HeadingColor, Background, TextStyle.Bold);
-        if (width > NewLabel.Length + 2) Paint(width - NewLabel.Length - 1, 0, NewLabel, DetailColor, Background);
+        // 标题行：标题（粗体）、补充说明（暗色，截掉开头）与右侧按钮；按钮为空时标题行可用到最右边。
+        var action = ActionLabel.GetColumns();
+        var headingRoom = action > 0 ? width - action - 3 : width - 2;
+        var heading = Fit(Heading, headingRoom);
+        Paint(1, 0, heading, HeadingColor, Background, TextStyle.Bold);
+        var detailRoom = headingRoom - heading.GetColumns() - 2;
+        if (HeadingDetail.Length > 0 && detailRoom > 1)
+            Paint(heading.GetColumns() + 3, 0, FitEnd(HeadingDetail, detailRoom), DetailColor, Background);
+        if (action > 0 && width > action + 2) Paint(width - action - 1, 0, ActionLabel, DetailColor, Background);
         if (rows.Count == 0)
         {
-            if (Viewport.Height > 1) Paint(1, 1, Fit("+ " + EmptyText, width - 2), DetailColor, Background);
+            if (Viewport.Height > 1) Paint(1, 1, Fit(EmptyText, width - 2), DetailColor, Background);
             return true;
         }
         for (var line = 0; line < VisibleRows && top + line < rows.Count; line++)

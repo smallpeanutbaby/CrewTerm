@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using CrewTerm.App.Client;
 using CrewTerm.App.Protocol;
 using CrewTerm.App.UI.Controls;
@@ -10,7 +9,6 @@ using CrewTerm.Core.Projects;
 using CrewTerm.Core.Settings;
 using CrewTerm.Workspace.Checkpoints;
 using CrewTerm.Workspace.Documents;
-using CrewTerm.Workspace.Files;
 using CrewTerm.Workspace.Git;
 using Terminal.Gui.App;
 using Terminal.Gui.Drawing;
@@ -22,8 +20,8 @@ using Terminal.Gui.Views;
 namespace CrewTerm.App.UI.Windows;
 
 /// <summary>
-/// CrewTerm 的全屏工作台窗口：左侧 herdr 风格的侧栏（<c>spaces</c> 项目与 <c>agents</c> 会话），右侧终端标签页与分屏，
-/// 按 F4 时在终端下方显示文件列表与代码编辑器。
+/// CrewTerm 的全屏工作台窗口：左侧 herdr 风格的侧栏（<c>spaces</c> 项目、<c>agents</c> 会话与 <c>files</c> 文件），右侧终端标签页与分屏，
+/// 打开文件时在终端下方显示代码查看器（可编辑，F4 显示或隐藏）。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -32,8 +30,8 @@ namespace CrewTerm.App.UI.Windows;
 /// 因此分离（F10）或关闭窗口不会结束会话，重新打开后按保存的布局恢复。
 /// </para>
 /// <para>
-/// 类按职责拆分为多个分部文件：本文件负责构造、全局快捷键、刷新循环、项目/会话/文件导航与释放；<c>Sidebar</c> 为侧栏，
-/// <c>Prefix</c> 为 <c>Ctrl+b</c> 前缀键；
+/// 类按职责拆分为多个分部文件：本文件负责构造、全局快捷键、刷新循环、项目/会话导航与释放；<c>Sidebar</c> 为侧栏，
+/// <c>Files</c> 为侧栏的 <c>files</c> 分区与代码查看器，<c>Prefix</c> 为 <c>Ctrl+b</c> 前缀键；
 /// <c>Actions</c> 为命令面板与常规操作，<c>Agents</c> 为 Agent 状态、通知与消息，<c>Extensions</c> 为会话恢复与本地插件，
 /// <c>Layout</c> 为标签页与分屏，<c>Mouse</c> 为终端面板回调，<c>Tools</c> 为 Git、后台任务与检查点。
 /// </para>
@@ -107,14 +105,9 @@ public sealed partial class WorkspaceWindow : Window
     private readonly CheckpointStore checkpoints;
 
     /// <summary>
-    /// 下方代码编辑器控件与当前打开文件的绑定。
+    /// 下方代码查看器中的编辑器控件与当前打开文件的绑定。
     /// </summary>
     private readonly EditorBinding editor = new();
-
-    /// <summary>
-    /// 下方 “FILES” 框中的目录列表；不在项目根目录时第一行为 <c>../</c>，其余各行依次对应 <see cref="files"/>。
-    /// </summary>
-    private readonly ListView fileList = new() { Width = Dim.Fill(), Height = Dim.Fill() };
 
     /// <summary>
     /// 右上方的终端标签页与分屏视图，显示当前项目的终端布局。
@@ -132,14 +125,9 @@ public sealed partial class WorkspaceWindow : Window
     private TerminalPane secondary => terminalLayout.Panes.Count > 1 ? terminalLayout.Panes[1] : primary;
 
     /// <summary>
-    /// 文件列表的外框，标题显示当前目录（项目相对路径）。
+    /// 代码查看器的外框，标题显示文件的项目相对路径，有未保存修改时前缀 <c>*</c>（见 <see cref="UpdateEditorTitle"/>）。
     /// </summary>
-    private readonly FrameView filesFrame = new() { Title = "FILES", HotKeySpecifier = NoHotKey };
-
-    /// <summary>
-    /// 代码编辑器的外框，标题显示文件名，有未保存修改时前缀 <c>*</c>。
-    /// </summary>
-    private readonly FrameView editorFrame = new() { Title = "CODE  ·  F5 Save", HotKeySpecifier = NoHotKey };
+    private readonly FrameView editorFrame = new() { Title = "CODE", HotKeySpecifier = NoHotKey };
 
     /// <summary>
     /// 倒数第二行的单行状态栏，显示操作结果、错误与 Agent 状态提醒。
@@ -179,10 +167,10 @@ public sealed partial class WorkspaceWindow : Window
     private volatile bool polling, detached;
 
     /// <summary>
-    /// <c>filesVisible</c>：下方文件与编辑器区域是否显示（默认隐藏，终端占满主区；F4 切换，打开文件时自动显示）；
+    /// <c>editorVisible</c>：终端下方的代码查看器是否显示（默认隐藏，终端占满主区；F4 切换，打开文件时自动显示）；
     /// <c>exitApproved</c>：已确认可以退出（未保存修改与布局保存都已处理），之后窗口停止运行不再被拦截。
     /// </summary>
-    private bool filesVisible, exitApproved;
+    private bool editorVisible, exitApproved;
 
     /// <summary>
     /// 当前项目以及切换项目时保护未保存编辑的规则。
@@ -193,16 +181,6 @@ public sealed partial class WorkspaceWindow : Window
     /// 当前项目的根目录；尚未选择项目时为 <see langword="null"/>。
     /// </summary>
     private string? projectRoot => navigation.ActiveProjectPath;
-
-    /// <summary>
-    /// 文件列表当前显示的目录，项目相对路径；空字符串表示项目根目录。
-    /// </summary>
-    private string relativeDirectory = "";
-
-    /// <summary>
-    /// 文件列表当前目录下的条目（目录在前，按名称排序）。
-    /// </summary>
-    private FileEntry[] files = [];
 
     /// <summary>
     /// 最近一次刷新得到的全部会话，按优先级降序、启动时间升序排列，与侧栏 <see cref="agentSection"/> 的各行对应。
@@ -263,9 +241,13 @@ public sealed partial class WorkspaceWindow : Window
             Focus = new(new Color(0xffffff), new Color(0x25425c)),
             HotNormal = new(new Color(0x68dbbf), new Color(0x10151d))
         });
-        spaceSection.Width = SidebarWidth; spaceSection.Height = 2;
-        agentSection.Y = Pos.Bottom(spaceSection) + 1; agentSection.Width = SidebarWidth; agentSection.Height = Dim.Fill(2);
+        // 三个分区自上而下各隔一行：spaces 与 agents 随行数伸缩（见 SectionHeight），其余高度都给 files。
+        spaceSection.Width = SidebarWidth; spaceSection.Height = Dim.Func(_ => SectionHeight(spaceSection, MaxSpaceRows));
+        agentSection.Y = Pos.Bottom(spaceSection) + 1; agentSection.Width = SidebarWidth;
+        agentSection.Height = Dim.Func(_ => SectionHeight(agentSection, MaxAgentRows));
+        fileSection.Y = Pos.Bottom(agentSection) + 1; fileSection.Width = SidebarWidth; fileSection.Height = Dim.Fill(2);
         ConfigureSidebar();
+        ConfigureFileSection();
         terminalLayout.Y = 0;
         terminalLayout.PaneCreated = ConfigureTerminalPane;
         terminalLayout.SelectionChanged = () =>
@@ -275,13 +257,12 @@ public sealed partial class WorkspaceWindow : Window
         };
         terminalLayout.NewTabRequested = () => Guard(NewTab);
         terminalLayout.MenuRequested = () => Guard(Palette);
-        filesFrame.Add(fileList); editorFrame.Add(editor.View);
+        editorFrame.Add(editor.View);
         status.Y = Pos.AnchorEnd(2);
         var shortcuts = new Label { Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Height = 1, HotKeySpecifier = NoHotKey,
-            Text = "F1 Help  F2 Space  F3 Agent  F4 Files  F6 Git  F7 Tasks  F9 Commands  F10 Detach  ·  Ctrl+b prefix" };
-        Add(spaceSection, agentSection, terminalLayout, filesFrame, editorFrame, status, shortcuts);
+            Text = "F1 Help  F2 Space  F3 Agent  F4 Code  F6 Git  F7 Tasks  F9 Commands  F10 Detach  ·  Ctrl+b prefix" };
+        Add(spaceSection, agentSection, fileSection, terminalLayout, editorFrame, status, shortcuts);
         ArrangePanels();
-        fileList.Accepting += (_, e) => { e.Handled = true; Guard(OpenFileEntry); };
         application.Keyboard.KeyDown += GlobalKey;
         application.Mouse.MouseEvent += CancelPrefixOnMouse;
         IsRunningChanging += (_, args) =>
@@ -305,7 +286,7 @@ public sealed partial class WorkspaceWindow : Window
         }
         var initial = projects.Projects.FirstOrDefault(p => p.Id == settings.LastProjectId) ?? projects.Projects.FirstOrDefault();
         if (initial is not null) { navigation.TrySelectSession(null, initial.Path); settings.LastProjectId = initial.Id; }
-        RefreshProjects(); RefreshFiles();
+        RefreshProjects(); RefreshFiles(); UpdateEditorTitle();
         LoadProjectLayout(options.Get("project") is null ? settings.LastSessionId : null);
         var initialFocusPending = true;
         SubViewsLaidOut += (_, _) =>
@@ -320,30 +301,29 @@ public sealed partial class WorkspaceWindow : Window
             var response = await client.CallAsync(new("input", id, Text: text), cancellation);
             if (!response.Ok) throw new IOException(response.Error ?? "Input failed");
         }, error => { if (!detached) application.Invoke(() => status.Text = "Input: " + error.Message); });
-        refreshTimer = application.AddTimeout(TimeSpan.FromMilliseconds(160), () => { BeginRefresh(); return !detached; });
-        status.Text = serverCompatibilityWarning ?? projectRoot ?? "Click + new beside spaces (F2) to add a project, then + new beside agents (F3). Ctrl+b ? lists keys.";
+        refreshTimer = application.AddTimeout(TimeSpan.FromMilliseconds(160), () => { BeginRefresh(); BeginFileRefresh(); return !detached; });
+        // 项目文件夹无法读取时保留 ReadFiles 写入状态栏的原因，而不是用项目路径覆盖它。
+        status.Text = serverCompatibilityWarning ?? (filesFailure is null ? projectRoot : status.Text) ?? "Click + new beside spaces (F2) to add a project, then + new beside agents (F3). Ctrl+b ? lists keys.";
         terminalLayout.ActivePane.SetFocus();
     }
 
     /// <summary>
-    /// 按 <see cref="filesVisible"/> 重新设置终端区、文件框与编辑器框的位置和大小。
+    /// 按 <see cref="sidebarVisible"/> 与 <see cref="editorVisible"/> 重新设置侧栏、终端区与代码查看器的位置和大小。
     /// </summary>
     /// <remarks>
-    /// 侧栏显示时左侧 <see cref="SidebarWidth"/> 列为 <c>spaces</c> 与 <c>agents</c>，其右空出一列；隐藏时（<c>Ctrl+b b</c>）终端区占满宽度。
-    /// 显示文件区时终端区占 53% 高度，其下左侧是 30 列宽的文件列表、右侧是编辑器；
+    /// 侧栏显示时左侧 <see cref="SidebarWidth"/> 列为 <c>spaces</c>、<c>agents</c> 与 <c>files</c>，其右空出一列；隐藏时（<c>Ctrl+b b</c>）终端区占满宽度。
+    /// 显示代码查看器时终端区占 50% 高度，查看器在其下方占满宽度；
     /// 隐藏时终端区一直延伸到底部两行（状态栏与快捷键提示）之上。
     /// </remarks>
     private void ArrangePanels()
     {
         var left = sidebarVisible ? SidebarWidth + 1 : 0;
-        spaceSection.Visible = agentSection.Visible = sidebarVisible;
+        spaceSection.Visible = agentSection.Visible = fileSection.Visible = sidebarVisible;
         terminalLayout.X = left;
         terminalLayout.Width = Dim.Fill();
-        terminalLayout.Height = filesVisible ? Dim.Percent(53) : Dim.Fill(2);
-        filesFrame.X = left; filesFrame.Y = Pos.Bottom(terminalLayout);
-        filesFrame.Width = 30; filesFrame.Height = Dim.Fill(2); filesFrame.Visible = filesVisible;
-        editorFrame.X = Pos.Right(filesFrame); editorFrame.Y = filesFrame.Y;
-        editorFrame.Width = Dim.Fill(); editorFrame.Height = Dim.Fill(2); editorFrame.Visible = filesVisible;
+        terminalLayout.Height = editorVisible ? Dim.Percent(50) : Dim.Fill(2);
+        editorFrame.X = left; editorFrame.Y = Pos.Bottom(terminalLayout);
+        editorFrame.Width = Dim.Fill(); editorFrame.Height = Dim.Fill(2); editorFrame.Visible = editorVisible;
     }
 
     /// <summary>
@@ -352,8 +332,8 @@ public sealed partial class WorkspaceWindow : Window
     /// <remarks>
     /// <para>
     /// 只在本窗口位于最上层（没有模态对话框）且尚未分离时生效。快捷键：F1 帮助、F2 添加项目、F3 新建 Agent、
-    /// F4 显示/隐藏文件区、F5 保存、F6 Git、F7 后台任务、F8 切换分屏、F9 与 Ctrl+Shift+P 命令面板、F10 分离；
-    /// Ctrl+Shift+V 粘贴、Ctrl+Shift+C 复制选区；Alt+1/Alt+2 聚焦第一/第二个终端，Alt+3 编辑器，Alt+4 文件列表，Alt+5 侧栏 agents（侧栏隐藏时先显示）；Ctrl+b 前缀键见 <see cref="HandlePrefix"/>。
+    /// F4 显示/隐藏代码查看器、F5 保存、F6 Git、F7 后台任务、F8 切换分屏、F9 与 Ctrl+Shift+P 命令面板、F10 分离；
+    /// Ctrl+Shift+V 粘贴、Ctrl+Shift+C 复制选区；Alt+1/Alt+2 聚焦第一/第二个终端，Alt+3 代码查看器，Alt+4 侧栏 files，Alt+5 侧栏 agents（侧栏隐藏时先显示）；Ctrl+b 前缀键见 <see cref="HandlePrefix"/>。
     /// </para>
     /// <para>
     /// 快捷键操作在 <see cref="Guard"/> 中执行。不是快捷键时，若某个终端面板拥有焦点且按键可以编码，
@@ -371,7 +351,7 @@ public sealed partial class WorkspaceWindow : Window
             KeyCode.F1 => ShowHelp,
             KeyCode.F2 => AddProject,
             KeyCode.F3 => NewAgent,
-            KeyCode.F4 => ToggleFiles,
+            KeyCode.F4 => ToggleEditor,
             KeyCode.F5 => SaveFile,
             KeyCode.F6 => GitMenu,
             KeyCode.F7 => TaskMenu,
@@ -385,8 +365,8 @@ public sealed partial class WorkspaceWindow : Window
         if (key == Key.C.WithCtrl.WithShift) action = CopySelection;
         if (key == Key.D1.WithAlt) action = () => primary.SetFocus();
         if (key == Key.D2.WithAlt) action = () => { if (terminalLayout.Panes.Count > 1) secondary.SetFocus(); };
-        if (key == Key.D3.WithAlt) action = () => { ShowFiles(); editor.View.SetFocus(); };
-        if (key == Key.D4.WithAlt) action = () => { ShowFiles(); fileList.SetFocus(); };
+        if (key == Key.D3.WithAlt) action = () => { ShowEditor(); editor.View.SetFocus(); };
+        if (key == Key.D4.WithAlt) action = () => FocusSidebar(fileSection);
         if (key == Key.D5.WithAlt) action = () => FocusSidebar(agentSection);
         if (action is not null) { key.Handled = true; Guard(action); return; }
         // 终端拥有焦点时，Ctrl+C、Ctrl+Q、Esc 与 Tab 都归终端所有（发给子程序），而不是交给 Terminal.Gui 处理。
@@ -537,41 +517,6 @@ public sealed partial class WorkspaceWindow : Window
     private void RefreshProjects() => RefreshSidebar();
 
     /// <summary>
-    /// 重新读取 <see cref="relativeDirectory"/> 并重建文件列表，然后选中第一项、在外框标题中显示当前目录。
-    /// </summary>
-    /// <remarks>
-    /// 没有当前项目时列表为空。不在根目录时第一行为 <c>../</c>；目录名前显示 <c>▸</c>。
-    /// 列表不包含 <c>.git</c> 与符号链接等重解析点。
-    /// </remarks>
-    /// <exception cref="DirectoryNotFoundException">项目根目录已不存在。</exception>
-    /// <exception cref="FileNotFoundException">当前子目录已不存在。</exception>
-    /// <exception cref="UnauthorizedAccessException">目录越出项目根目录、经过符号链接或无权访问。</exception>
-    private void RefreshFiles()
-    {
-        string? failure = null;
-        try { files = projectRoot is null ? [] : FileWorkspace.ListDirectory(projectRoot, relativeDirectory).ToArray(); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            // 项目目录可能已被删除、移走或无权访问（例如上次打开的项目）：工作台仍要能打开，文件区显示为空并说明原因。
-            files = [];
-            failure = error.Message;
-        }
-        var labels = new List<string>();
-        if (relativeDirectory.Length > 0) labels.Add("../");
-        labels.AddRange(files.Select(f => (f.IsDirectory ? "▸ " : "  ") + f.Name));
-        fileList.SetSource(new ObservableCollection<string>(labels));
-        if (labels.Count > 0) fileList.SelectedItem = 0;
-        filesFrame.Title = "FILES  ·  " + (failure is not null ? "unavailable" : relativeDirectory.Length == 0 ? "/" : relativeDirectory);
-        if (failure is not null) status.Text = "Project folder unavailable: " + failure;
-    }
-
-    /// <summary>
-    /// 按当前文件与修改状态更新编辑器外框标题：有未保存修改时前缀 <c>*</c>，没有打开文件时提示在文件列表中按 Enter 打开。
-    /// </summary>
-    private void UpdateEditorTitle() => editorFrame.Title = (editor.IsDirty ? "* " : "") +
-        (editor.Path is null ? "CODE  ·  Enter a file to edit" : Path.GetFileName(editor.Path)) + "  ·  F5 Save";
-
-    /// <summary>
     /// 在替换或关闭当前文件之前处理未保存的修改。
     /// </summary>
     /// <remarks>
@@ -592,18 +537,19 @@ public sealed partial class WorkspaceWindow : Window
     /// 切换到指定项目（即使它就是当前项目，也会重新加载布局与文件列表）。
     /// </summary>
     /// <remarks>
-    /// 先处理未保存修改，用户取消则什么也不做。随后保存当前项目的布局与会话绑定、使进行中的刷新失效、关闭编辑器、
-    /// 文件列表回到根目录，再加载目标项目的终端布局并刷新项目列表、文件列表与编辑器标题。终端会话本身不受影响。
+    /// 先处理未保存修改，用户取消则什么也不做。随后保存当前项目的布局与会话绑定、使进行中的刷新失效、关闭编辑器，
+    /// 再加载目标项目的终端布局并刷新项目列表、文件列表（回到根目录）与编辑器标题。终端会话本身不受影响。
     /// </remarks>
     /// <param name="project">目标项目。</param>
     private void SwitchProject(ProjectEntry project)
     {
         if (!CanLeaveEditor()) return;
         SaveCurrentLayout(); refreshGate.SelectionChanged();
-        editor.Close(true); navigation.TrySelectSession(null, project.Path, discardConfirmed: true); relativeDirectory = "";
+        editor.Close(true); navigation.TrySelectSession(null, project.Path, discardConfirmed: true);
         settings.LastProjectId = project.Id;
-        LoadProjectLayout(); RefreshProjects(); RefreshFiles(); UpdateEditorTitle();
+        // 先显示项目路径：文件夹无法读取时 EnterDirectory 会把原因写入状态栏，覆盖路径。
         status.Text = project.Path;
+        LoadProjectLayout(); RefreshProjects(); EnterDirectory(""); UpdateEditorTitle();
     }
 
     /// <summary>
@@ -630,65 +576,13 @@ public sealed partial class WorkspaceWindow : Window
         if (different)
         {
             SaveCurrentLayout();
-            editor.Close(true); relativeDirectory = "";
+            editor.Close(true);
             LoadProjectLayout();
-            RefreshProjects(); RefreshFiles(); UpdateEditorTitle();
             status.Text = project.Path;
+            RefreshProjects(); EnterDirectory(""); UpdateEditorTitle();
         }
         return true;
     }
-
-    /// <summary>
-    /// 在文件列表中按 Enter 时：<c>../</c> 返回上级目录，目录则进入，文件则在编辑器中打开。
-    /// </summary>
-    private void OpenFileEntry()
-    {
-        if (fileList.SelectedItem is not int index || projectRoot is null) return;
-        if (relativeDirectory.Length > 0)
-        {
-            if (index == 0) { relativeDirectory = Path.GetDirectoryName(relativeDirectory) ?? ""; RefreshFiles(); return; }
-            index--;
-        }
-        if (index >= files.Length) return;
-        var file = files[index];
-        if (file.IsDirectory) { relativeDirectory = file.RelativePath; RefreshFiles(); }
-        else OpenFile(file.RelativePath);
-    }
-
-    /// <summary>
-    /// 在编辑器中打开当前项目内的文件并跳到指定行，然后显示文件区并聚焦编辑器。
-    /// </summary>
-    /// <remarks>
-    /// 没有当前项目，或用户在处理未保存修改时选择取消，则什么也不做。
-    /// </remarks>
-    /// <param name="relativePath">项目相对路径。</param>
-    /// <param name="line">要跳到的行号，从 1 开始；超出范围时取最近的有效行。</param>
-    private void OpenFile(string relativePath, int line = 1)
-    {
-        if (projectRoot is null || !CanLeaveEditor()) return;
-        editor.Open(projectRoot, relativePath, true); editor.GoToLine(line);
-        ShowFiles(); UpdateEditorTitle(); editor.View.SetFocus();
-    }
-
-    /// <summary>
-    /// 保存编辑器中的文件（F5），并更新标题与状态栏。
-    /// </summary>
-    /// <exception cref="FileConflictException">文件在打开后已被外部修改或删除，内容未写入。</exception>
-    private void SaveFile()
-    {
-        if (editor.Path is null) { status.Text = "No file is open. Select a file in FILES (F4) first."; return; }
-        editor.Save(); UpdateEditorTitle(); status.Text = "Saved " + editor.Path;
-    }
-
-    /// <summary>
-    /// 显示或隐藏下方文件与编辑器区域（F4），并把焦点移到第一个终端面板。
-    /// </summary>
-    private void ToggleFiles() { filesVisible = !filesVisible; ArrangePanels(); primary.SetFocus(); }
-
-    /// <summary>
-    /// 显示下方文件与编辑器区域，不改变焦点。
-    /// </summary>
-    private void ShowFiles() { filesVisible = true; ArrangePanels(); }
 
     /// <summary>
     /// 切换分屏（F8）：只有一个面板时向右分屏；否则把当前标签页收回为第一个面板。
@@ -711,12 +605,14 @@ public sealed partial class WorkspaceWindow : Window
         (serverCompatibilityWarning is null ? "" : serverCompatibilityWarning + "\n\n") + CrewTermHelp.Text +
         "\n\nSIDEBAR\n  spaces   one row per project: state dot, name, git branch. Click to switch, right-click for a menu, + new to add (F2).\n" +
         "  agents   every agent: ◉ blocked  ● working  ● done (unread)  ○ idle. Click to show it, right-click for actions, + new to start (F3).\n" +
+        "  files    the current space's folder: click a folder to enter it, .. to go up, a file to open it in the code viewer.\n" +
+        "\nCODE VIEWER\n  Opens below the terminal when you click a file. Edit, F5 save, Esc back to the terminal, F4 hide / show.\n" +
         "\nPREFIX KEYS (press Ctrl+b, then)\n  N new space   c new tab   n / p next / previous tab   1-9 go to tab   T rename tab   X close tab\n" +
-        "  v split right   - split down   o next pane   x close pane   w focus spaces   g focus agents\n" +
-        "  b toggle sidebar   q detach   ? this help   Ctrl+b send Ctrl+b to the terminal   Esc cancel\n" +
-        "\nF9 opens the searchable command palette. Alt+1/2/3/4/5 move focus between terminals, editor, files and agents.\n" +
+        "  v split right   - split down   o next pane   x close pane   w focus spaces   g focus agents   f focus files\n" +
+        "  e show / hide code viewer   b toggle sidebar   q detach   ? this help   Ctrl+b send Ctrl+b to the terminal   Esc cancel\n" +
+        "\nF9 opens the searchable command palette. Alt+1/2/3/4/5 move focus between terminals, code viewer, files and agents.\n" +
         "The embedded CLI receives ordinary keys, Ctrl+C, Esc and Tab. Use F9 → Terminal: Send reserved key for function keys reserved by CrewTerm.\n" +
-        "F4 shows files and the editor. File saves detect external changes made by agents and refuse to overwrite them.");
+        "File saves detect external changes made by agents and refuse to overwrite them.");
 
     /// <summary>
     /// 请求分离工作台（F10）：窗口停止运行，所有会话继续在 daemon 中运行。

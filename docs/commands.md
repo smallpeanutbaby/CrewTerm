@@ -11,7 +11,7 @@
   - [2.1 终端面板](#21-终端面板)
   - [2.2 标签栏与分隔线](#22-标签栏与分隔线)
   - [2.3 编辑器](#23-编辑器)
-  - [2.4 侧栏与文件列表](#24-侧栏与文件列表)
+  - [2.4 侧栏](#24-侧栏)
   - [2.5 对话框、选择器与命令面板](#25-对话框选择器与命令面板)
 - [3. 命令面板命令](#3-命令面板命令)
 - [4. 菜单项：Git、任务与检查点](#4-菜单项git任务与检查点)
@@ -27,7 +27,7 @@
 | F1 | 帮助窗口 `SHORTCUTS · CrewTerm` | `Help: Shortcuts and usage` |
 | F2 | 添加项目（新空间） | `Project: Add folder`；也可点击 `spaces` 旁的 `+ new` |
 | F3 | 新建 Agent 或终端 | `Agent: New embedded terminal`；需要当前项目；也可点击 `agents` 旁的 `+ new` |
-| F4 | 显示 / 隐藏文件区与编辑器（默认隐藏） | 同时把焦点移到第一个终端面板 |
+| F4 | 显示 / 隐藏终端下方的代码查看器（默认隐藏，打开文件时自动显示） | 隐藏时焦点回到终端；显示时聚焦查看器，没有打开文件时聚焦侧栏 `files`；也可 `Ctrl+b e` |
 | F5 | 保存当前文件 | `Editor: Save file` |
 | F6 | Git 菜单 | `Git: Changes / diff / stage / worktrees` |
 | F7 | 后台任务菜单 | `Tasks: Run / history / cancel / pipelines` |
@@ -39,21 +39,21 @@
 | Ctrl+Shift+C | 复制活动终端的选区，没有选区时复制可见屏幕 | `Terminal: Copy selected text` |
 | Alt+1 | 聚焦当前标签页中的第一个终端面板 | 视觉顺序：从左到右、从上到下 |
 | Alt+2 | 聚焦第二个终端面板 | 只有一个面板时无效 |
-| Alt+3 | 聚焦编辑器 | 文件区隐藏时先显示 |
-| Alt+4 | 聚焦文件列表 | 文件区隐藏时先显示 |
+| Alt+3 | 聚焦代码查看器 | 查看器隐藏时先显示 |
+| Alt+4 | 聚焦侧栏 `files` | 也可 `Ctrl+b f`；侧栏隐藏时先显示 |
 | Alt+5 | 聚焦侧栏 `agents` | 也可 `Ctrl+b g` |
 | Ctrl+b | 前缀键 | 之后再按一个键，见 [1.1](#11-前缀键-ctrlb) |
 
 - 只有不带修饰键的 F1–F10 与 Ctrl+b 前缀是全局快捷键；Shift+F5、Ctrl+F2 等组合以及 F11、F12 在终端面板中发给子程序。
 - Ctrl+Shift+V / Ctrl+Shift+C 始终作用于活动终端面板，即使焦点在编辑器中。
-- 焦点不在终端面板时按 Esc 会请求退出工作台，效果与 F10 相同（先处理未保存修改并保存布局）。
+- Esc 不会退出工作台：终端面板获得焦点时发给子程序，在侧栏与代码查看器中把焦点还给终端。离开工作台用 F10 或 `Ctrl+b q`。
 - **macOS**：Alt 组合键需要把 Option 键用作 Meta 键（Terminal.app 的“将 Option 键用作 Meta 键”，iTerm2 的 “Left Option key: Esc+”）；
   功能键可能需要同时按住 Fn。
 - 部分宿主终端自己占用 Ctrl+Shift 组合键，这时按键到不了 CrewTerm，请改用 F9 或右键菜单中的对应命令。
 
 ### 1.1 前缀键 Ctrl+b
 
-仿照 herdr / tmux：先按 `Ctrl+b`，状态栏列出可用的按键，再在 2 秒内按一个键（超时或单击鼠标即取消；单独的修饰键按下不计）。焦点在终端、侧栏、文件列表或编辑器中时都有效，
+仿照 herdr / tmux：先按 `Ctrl+b`，状态栏列出可用的按键，再在 2 秒内按一个键（超时或单击鼠标即取消；单独的修饰键按下不计）。焦点在终端、侧栏或代码查看器中时都有效，
 对话框打开时不起作用。
 
 | 按键 | 作用 | 对应的命令或快捷键 |
@@ -67,7 +67,8 @@
 | `Ctrl+b` `v` / `-` | 向右 / 向下分屏 | `Terminal: Split right` / `Terminal: Split down` |
 | `Ctrl+b` `o` | 聚焦下一个面板 | `Terminal: Focus next pane` |
 | `Ctrl+b` `x` | 关闭面板（会话继续运行） | `Terminal: Close pane (keep session running)` |
-| `Ctrl+b` `w` / `g` | 聚焦侧栏 `spaces` / `agents` | Alt+5（agents） |
+| `Ctrl+b` `w` / `g` / `f` | 聚焦侧栏 `spaces` / `agents` / `files` | Alt+5（agents）、Alt+4（files） |
+| `Ctrl+b` `e` | 显示或隐藏代码查看器 | F4 |
 | `Ctrl+b` `b` | 显示或隐藏侧栏 | — |
 | `Ctrl+b` `q` | 分离，会话与任务继续运行 | F10 |
 | `Ctrl+b` `?` | 帮助 | F1 |
@@ -141,28 +142,28 @@
 
 - F3 被工作台占用（新建 Agent），查找下一处请再次执行 `Editor: Find text`。
 - Ctrl+F 与 `Editor: Find text` 打开同一个查找框；Ctrl+H 不会打开替换框；跳转行用 `Editor: Go to line`。
-- F5 保存；Esc 会请求退出工作台（见第 1 节；多光标编辑时先收回为单个光标）。
+- F5 保存；Esc 把焦点还给终端，查看器保持显示（多光标编辑时 Esc 先收回为单个光标）；F4 隐藏查看器。
 
-### 2.4 侧栏与文件列表
+### 2.4 侧栏
 
-侧栏的 `spaces`、`agents` 与文件列表的通用按键：
+侧栏 `spaces`、`agents` 与 `files` 三个分区的通用按键：
 
 | 按键 / 鼠标 | 作用 |
 | --- | --- |
-| ↑ / ↓（或 Ctrl+P / Ctrl+N） | 上一项 / 下一项 |
+| ↑ / ↓ | 上一项 / 下一项 |
 | PageUp / PageDown、Home / End | 翻页 / 第一项、最后一项 |
-| 单击 | 侧栏：选中并立即执行（见下表）；文件列表：选中 |
-| Enter（文件列表也可双击） | 执行该列表的操作（见下表） |
-| 右键单击、Shift+F10（侧栏） | 打开该行的菜单 |
-| Esc（侧栏） | 把焦点还给活动终端 |
-| `+`、单击标题旁的 `+ new`（侧栏） | 添加项目 / 新建 Agent |
+| 输入一个字符 | 跳到下一个名称以它开头的行（不区分大小写，只选中不执行） |
+| 单击、Enter | 选中并立即执行（见下表）；双击只执行一次 |
+| 右键单击、Shift+F10 | 打开该行的菜单（`spaces` 与 `agents`） |
+| Esc | 把焦点还给活动终端 |
+| `+`、单击标题旁的 `+ new` | 添加项目 / 新建 Agent（`files` 没有 `+ new`） |
 | 滚轮 | 滚动列表 |
 
-| 列表 | 聚焦 | Enter 的作用 |
+| 分区 | 聚焦 | 单击或 Enter 的作用 |
 | --- | --- | --- |
-| 侧栏 `spaces` | 单击、`Ctrl+b w` | 切换到选中的项目；右键菜单：`Open`、`Start an agent here`、`Remove from sidebar` |
-| 侧栏 `agents` | 单击、Alt+5、`Ctrl+b g` | 把选中的会话显示到终端区（已显示则聚焦所在面板）；右键菜单见 [使用手册 7.4](user-guide.md#74-agent-行的右键菜单) |
-| 文件列表 `FILES  ·  目录` | Alt+4 | `../` 返回上级；目录则进入；文件则在编辑器中打开 |
+| `spaces` | 单击、`Ctrl+b w` | 切换到选中的项目；右键菜单：`Open`、`Start an agent here`、`Remove from sidebar` |
+| `agents` | 单击、Alt+5、`Ctrl+b g` | 把选中的会话显示到终端区（已显示则聚焦所在面板）；右键菜单见 [使用手册 7.4](user-guide.md#74-agent-行的右键菜单) |
+| `files  /目录` | 单击、Alt+4、`Ctrl+b f` | `‹ ..` 返回上级；目录则进入；文件则在终端下方的代码查看器中打开；列表每 2 秒自动重新读取 |
 
 ### 2.5 对话框、选择器与命令面板
 

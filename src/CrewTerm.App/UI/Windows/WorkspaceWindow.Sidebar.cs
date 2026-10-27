@@ -6,11 +6,12 @@ using CrewTerm.Workspace.Git;
 namespace CrewTerm.App.UI.Windows;
 
 /// <summary>
-/// 工作台的 herdr 风格侧栏：<c>spaces</c> 分区列出项目（状态汇总、名称、Git 分支），<c>agents</c> 分区列出全部会话（状态、名称、“状态 · 程序”）。
+/// 工作台的 herdr 风格侧栏：<c>spaces</c> 分区列出项目（状态汇总、名称、Git 分支），<c>agents</c> 分区列出全部会话（状态、名称、“状态 · 程序”），
+/// 其下的 <c>files</c> 分区浏览当前项目的文件（见 <c>WorkspaceWindow.Files.cs</c>）。
 /// </summary>
 /// <remarks>
 /// <para>单击空间行切换项目并把焦点交给终端，单击 Agent 行跳到它所在的面板（必要时先切换项目），右键打开对应的菜单，单击 <c>+ new</c> 新建，
-/// 在侧栏中按 Esc 回到终端。行内容在每次会话刷新、项目切换后由 <see cref="RefreshSidebar"/> 重建。</para>
+/// 在侧栏中按 Esc 回到终端。前两个分区的行在每次会话刷新、项目切换后由 <see cref="RefreshSidebar"/> 重建。</para>
 /// <para>各行以项目标识或会话标识为 <see cref="SidebarRow.Key"/>，单击与菜单按标识找回对象，列表在两次绘制之间重新排序也不会点错。</para>
 /// </remarks>
 public sealed partial class WorkspaceWindow
@@ -26,6 +27,11 @@ public sealed partial class WorkspaceWindow
     private const int MaxSpaceRows = 10;
 
     /// <summary>
+    /// <c>agents</c> 分区最多显示的会话行数；更多会话时在分区内滚动。
+    /// </summary>
+    private const int MaxAgentRows = 8;
+
+    /// <summary>
     /// 重新读取各项目 Git 分支的最短间隔。
     /// </summary>
     private static readonly TimeSpan BranchRefreshInterval = TimeSpan.FromSeconds(3);
@@ -33,12 +39,12 @@ public sealed partial class WorkspaceWindow
     /// <summary>
     /// 左上方的 <c>spaces</c> 分区，每个项目一行，行的键为项目标识。
     /// </summary>
-    private readonly SidebarSection spaceSection = new("spaces", "add a project  ·  F2");
+    private readonly SidebarSection spaceSection = new("spaces", "+ add a project  ·  F2");
 
     /// <summary>
-    /// 左下方的 <c>agents</c> 分区，按 <see cref="sessions"/> 的顺序每个会话一行（等待决定的排在最前），行的键为会话标识。
+    /// 中间的 <c>agents</c> 分区，按 <see cref="sessions"/> 的顺序每个会话一行（等待决定的排在最前），行的键为会话标识。
     /// </summary>
-    private readonly SidebarSection agentSection = new("agents", "start an agent  ·  F3");
+    private readonly SidebarSection agentSection = new("agents", "+ start an agent  ·  F3");
 
     /// <summary>
     /// 各项目路径最近一次读取到的 Git 分支及读取时间；只在 UI 线程访问，按平台的路径大小写规则比较键。
@@ -51,22 +57,34 @@ public sealed partial class WorkspaceWindow
     private readonly HashSet<string> branchReads = new(FileSystemPath.Comparer);
 
     /// <summary>
-    /// 最近一次设置的 <see cref="spaceSection"/> 高度。Terminal.Gui 的 <c>Height</c> 赋值即使数值不变也会触发整屏清除重绘，
-    /// 所以只在高度变化时赋值。
-    /// </summary>
-    private int spaceSectionHeight;
-
-    /// <summary>
     /// 侧栏是否显示（<c>Ctrl+b b</c> 切换）；隐藏时终端区占满整个宽度。
     /// </summary>
     private bool sidebarVisible = true;
+
+    /// <summary>
+    /// <c>spaces</c> 或 <c>agents</c> 分区的高度：标题一行加行数（没有行时为占位提示一行），不超过 <paramref name="maximum"/>，
+    /// 也不超过侧栏可用高度的三分之一，保证下方的 <c>files</c> 分区始终有空间。
+    /// </summary>
+    /// <remarks>
+    /// 作为 <c>Dim.Func</c> 在每次布局时求值，窗口大小变化时自动重新计算；行数变化导致高度变化时由 <see cref="RefreshSidebar"/> 请求重新布局。
+    /// 不直接给 <c>Height</c> 赋值：Terminal.Gui 的 <c>Height</c> 赋值即使数值不变也会触发整屏清除重绘。
+    /// </remarks>
+    /// <param name="section">分区。</param>
+    /// <param name="maximum">最多显示的行数。</param>
+    /// <returns>分区高度（行），至少为 2。</returns>
+    private int SectionHeight(SidebarSection section, int maximum)
+    {
+        // 可用高度扣除底部两行（状态栏与快捷键提示）与分区之间的两个空行。
+        var share = Math.Max(1, (Viewport.Height - 4) / 3 - 1);
+        return Math.Clamp(section.Rows.Count, 1, Math.Max(1, Math.Min(maximum, share))) + 1;
+    }
 
     /// <summary>
     /// 显示或隐藏侧栏，并重新排列各区域；隐藏时若焦点在侧栏中，把焦点交给活动终端。
     /// </summary>
     private void ToggleSidebar()
     {
-        var hadFocus = spaceSection.HasFocus || agentSection.HasFocus;
+        var hadFocus = spaceSection.HasFocus || agentSection.HasFocus || fileSection.HasFocus;
         sidebarVisible = !sidebarVisible;
         ArrangePanels();
         if (!sidebarVisible && hadFocus) FocusActiveTerminal();
@@ -115,14 +133,16 @@ public sealed partial class WorkspaceWindow
     }
 
     /// <summary>
-    /// 按当前项目、会话与活动面板重建侧栏两个分区的行。
+    /// 按当前项目、会话与活动面板重建侧栏 <c>spaces</c> 与 <c>agents</c> 两个分区的行。
     /// </summary>
     /// <remarks>
     /// <c>spaces</c>：行首符号为该项目中所有会话状态的汇总（等待决定优先），右侧为 Git 分支，当前项目以粗体高亮；分区没有焦点时选中当前项目。
     /// <c>agents</c>：按 <see cref="sessions"/> 的顺序列出，右侧为“状态 · 程序”，活动面板正在显示的会话以粗体高亮；按会话标识保持原选择。
+    /// 行数变化使分区高度（见 <see cref="SectionHeight"/>）改变时请求重新布局。
     /// </remarks>
     private void RefreshSidebar()
     {
+        var heights = (SectionHeight(spaceSection, MaxSpaceRows), SectionHeight(agentSection, MaxAgentRows));
         var items = projects.Projects;
         var current = -1;
         var spaceRows = new List<SidebarRow>(items.Count);
@@ -135,9 +155,6 @@ public sealed partial class WorkspaceWindow
             spaceRows.Add(new(project.Id, badge.Glyph, badge.Color, project.Name, BranchOf(project.Path) ?? "", isCurrent));
         }
         spaceSection.SetRows(spaceRows, spaceSection.HasFocus ? null : Math.Max(0, current));
-        // 分区高度随项目数变化（标题一行加项目行，没有项目时为占位提示一行），agents 分区紧随其后。
-        var height = Math.Clamp(spaceRows.Count, 1, MaxSpaceRows) + 1;
-        if (height != spaceSectionHeight) spaceSection.Height = spaceSectionHeight = height;
         var selectedId = agentSection.SelectedIndex is var selected and >= 0 ? agentSection.Rows[selected].Key : null;
         // 构造窗口时侧栏先于终端布局建立，此时还没有标签页，也就没有正在显示的会话。
         var shown = terminalLayout.LayoutModel.Tabs.Count == 0 ? null : ActiveTerminal.SessionId;
@@ -147,6 +164,7 @@ public sealed partial class WorkspaceWindow
             return new SidebarRow(s.Id, badge.Glyph, badge.Color, DisplayName(s), AgentStateStyle.Describe(s), s.Id == shown);
         }).ToArray();
         agentSection.SetRows(agentRows, selectedId is null ? null : Math.Max(0, Array.FindIndex(agentRows, r => r.Key == selectedId)));
+        if (heights != (SectionHeight(spaceSection, MaxSpaceRows), SectionHeight(agentSection, MaxAgentRows))) SetNeedsLayout();
     }
 
     /// <summary>

@@ -389,8 +389,9 @@ public sealed class TerminalPane : View
             SetAttribute(new Attribute(new Color(0x7f849c), new Color(0x10151d)));
             Move(2, 3); AddStr("F3            start an agent or a shell here");
             Move(2, 4); AddStr("click an agent in the sidebar to show it here");
-            Move(2, 5); AddStr("ctrl+b v / -  split right / down");
-            Move(2, 6); AddStr("ctrl+b c      new tab");
+            Move(2, 5); AddStr("click a file under files to view it below");
+            Move(2, 6); AddStr("ctrl+b v / -  split right / down");
+            Move(2, 7); AddStr("ctrl+b c      new tab");
             return true;
         }
         var (start, end) = SelectionRange();
