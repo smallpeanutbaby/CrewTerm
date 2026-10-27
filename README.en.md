@@ -40,7 +40,7 @@ close the UI and your agents and tasks keep running; open CrewTerm again and you
 
 **Project tools**
 
-- File browser, syntax-highlighted editor and full-text search. Saves keep the original encoding and line endings and refuse to
+- A `files` sidebar section that browses the project (refreshing on its own); click a file to open it in the syntax-highlighted, editable code viewer below the terminal. Full-text search. Saves keep the original encoding and line endings and refuse to
   overwrite files an agent changed on disk.
 - Send selected code with path and line numbers to a chosen agent via bracketed paste; you confirm before it is submitted.
 - Git changes, diffs, per-file staging and worktree management (one isolated branch directory per agent).

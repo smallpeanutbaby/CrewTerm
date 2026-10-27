@@ -77,7 +77,7 @@ src/
 ├─ CrewTerm.Workspace/       以项目根为边界的文件、编辑、Git、检查点（依赖 Core）
 │  ├─ Files/                 FileWorkspace、FileEntry、SearchResult、WorkspacePath
 │  ├─ Documents/             DocumentBuffer、FileConflictException
-│  ├─ Git/                   GitService、GitChange、GitWorktree、GitOperationException、GitResult
+│  ├─ Git/                   GitService、GitBranch、GitChange、GitWorktree、GitOperationException、GitResult
 │  └─ Checkpoints/           CheckpointStore、CheckpointInfo、CheckpointChange、CheckpointPreview、StoredCheckpoint
 ├─ CrewTerm.Automation/      命令执行、Agent 状态与协作、原生会话、插件（依赖 Core）
 │  ├─ Tasks/                 TaskRunner、TaskRunResult、TaskHistory、CommandTask、BoundedTextBuffer
@@ -94,9 +94,11 @@ src/
    ├─ Protocol/              PipeProtocol、DaemonRequest、DaemonResponse、SessionInfo、DaemonTaskInfo
    ├─ Server/                DaemonHost（Agents/Hooks/NativeSessions/Plugins 分部类）、DaemonSession、DaemonTaskService、DaemonTaskEntry、DaemonPluginService
    └─ UI/
-      ├─ Windows/            WorkspaceWindow（Actions/Agents/Extensions/Layout/Mouse/Tools 分部类）
-      ├─ Controls/           TerminalPane、TerminalLayoutView、PaneDivider、EditorBinding、Dialogs、CommandPalette、PaletteCommand
-      └─ Input/              TerminalInput、TerminalMouse、SessionInputDispatcher、SessionRefreshGate、TerminalResizeCoordinator、ResizeSessionState、TerminalSize
+      ├─ Windows/            WorkspaceWindow（Sidebar/Files/Prefix/Actions/Agents/Extensions/Layout/Mouse/Tools 分部类）
+      ├─ Controls/           TerminalPane、TerminalLayoutView、TabStripLayout、PaneDivider、SidebarSection、SidebarRow、AgentBadge、AgentStateStyle、
+      │                      EditorBinding、Dialogs、CommandPalette、PaletteCommand
+      └─ Input/              TerminalInput、TerminalMouse、PrefixKeyState、PrefixKeyOutcome、SessionInputDispatcher、SessionRefreshGate、
+                             TerminalResizeCoordinator、ResizeSessionState、TerminalSize
 tests/                       与 src 一一对应：CrewTerm.<项目>.Tests/<同名文件夹>/；App.Tests 另有 Cli/、Server/、UI/、Tui/（端到端界面测试）
 └─ CrewTerm.Testing/         共享测试支持：Platform/（平台限定特性、TestShell）、Fixtures/（PowerShellFixture、CrewTermBuild、Poll）
 ```
