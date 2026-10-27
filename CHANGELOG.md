@@ -3,7 +3,9 @@
 本项目的所有重要变更都记录在此文件中。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。1.0 之前的次版本号变化可能包含不兼容的改动。
 
-## [0.3.0] - 未发布
+## [未发布]
+
+## [0.3.0] - 2026-10-27
 
 ### 新增
 
@@ -86,6 +88,7 @@
 
 - Windows 原生多 Agent 终端工作台：ConPTY 会话、后台服务、项目与文件浏览、代码编辑、Git 改动查看、后台任务与命令行接口。
 
-[0.3.0]: https://github.com/smallpeanutbaby/CrewTerm/compare/e7bde45...HEAD
+[未发布]: https://github.com/smallpeanutbaby/CrewTerm/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/smallpeanutbaby/CrewTerm/compare/e7bde45...v0.3.0
 [0.2.0]: https://github.com/smallpeanutbaby/CrewTerm/compare/b55e8e5...e7bde45
 [0.1.0]: https://github.com/smallpeanutbaby/CrewTerm/commit/b55e8e5
